@@ -17,7 +17,7 @@ wifi restart (r)      Turn Wi-Fi off and on again
 Install it using npm:
 
 ```sh
-npm install -g wifi-cli
+npm install -g wifi-cli-macos
 ```
 
 ## Usage
