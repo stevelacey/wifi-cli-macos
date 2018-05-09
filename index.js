@@ -4,14 +4,19 @@ const colors = require('colors')
 const execSync = require('child_process').execSync
 const program = require('vorpal')()
 
-const cloudflared = (action) => exec(`sudo brew services ${action} cloudflared || true`)
+const cloudflared = (action) => console.log(exec(`sudo brew services ${action} cloudflared || true`)) || true
 const currentNetwork = () => exec(`airport -I | awk '/ SSID/ {print substr($0, index($0, $2))}'`)
 const exec = (cmd) => execSync(cmd).toString().trim()
 const info = () => exec('networksetup -getairportnetwork en0')
 const findPassword = (ssid) => exec(`security find-generic-password -ga "${ssid}" -w || true`)
-const on = () => exec('networksetup -setairportpower en0 on')
-const off = () => exec('networksetup -setairportpower en0 off')
-const setDns = (servers) => exec(`networksetup -setdnsservers Wi-Fi ${(servers || ['empty']).join(' ')}`)
+const on = () => exec('networksetup -setairportpower en0 on') || true
+const off = () => exec('networksetup -setairportpower en0 off') || true
+const getDns = () => console.log(`Current DNS Servers: ${exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' ')}`)
+const setDns = (servers) => {
+  if (servers.length === 1 && servers[0] === '-') servers = ['empty'] // treat '-' like 'empty'
+  exec(`networksetup -setdnsservers Wi-Fi ${(servers).join(' ')}`)
+  console.log(`Configured DNS Servers: ${exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' ')}`)
+}
 const sortNetworks = (a, b) => {
   if (a.rssi.indexOf(' ') !== -1) return -1
   if (b.rssi.indexOf(' ') !== -1) return 1
@@ -94,7 +99,7 @@ program
 program
   .command('dns [servers...]')
   .description('Set DNS servers')
-  .action(({servers}) => setDns(servers))
+  .action(({servers}) => !servers ? getDns() : setDns(servers))
 
 program
   .command('on')

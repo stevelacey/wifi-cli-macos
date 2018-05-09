@@ -47,11 +47,18 @@ Current Wi-Fi Network: Network 1
 ### Configure DNS servers
 
 ```sh
-wifi dns 8.8.8.8
+wifi dns
+Current DNS Servers: There aren't any DNS Servers set on Wi-Fi.
 ```
 
 ```sh
-wifi dns empty
+wifi dns 1.1.1.1 8.8.8.8
+Configured DNS Servers: 1.1.1.1 8.8.8.8
+```
+
+```sh
+wifi dns -
+Configured DNS Servers: There aren't any DNS Servers set on Wi-Fi.
 ```
 
 ### Turn Wi-Fi off and on again
