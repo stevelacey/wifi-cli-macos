@@ -36,20 +36,31 @@ program
   .command('list')
   .description('List available Wi-Fi networks')
   .alias('ls')
-  .action(function (network, password) {
+  .action((network, password) => {
     airport.scan((err, networks) => {
-      const ssids = networks.sort((a, b) => parseInt(a.rssi, 10) < parseInt(b.rssi, 10)).map((network) => {
+      const length = networks.reduce((a, b) => a.ssid.length > b.ssid.length ? a : b).ssid.length
+
+      const sort = (a, b) => {
+        if (a.rssi.indexOf(' ') !== -1) return -1
+        if (b.rssi.indexOf(' ') !== -1) return 1
+        if (a.rssi == b.rssi) return a.ssid == b.ssid ? 0 : a.ssid < b.ssid ? -1 : 1
+        return parseInt(a.rssi) < parseInt(b.rssi) ? 1 : -1
+      }
+
+      const ssids = networks.sort(sort).map((network) => {
+        const ssid = network.ssid.padEnd(length)
+
         switch (true) {
-          case (network.rssi.indexOf(' ') !== -1): return network.ssid.cyan    // Hotspot?
-          case (network.rssi > -30): return (network.ssid + ' ▁▂▃▄▅▆▇█').green // Amazing
-          case (network.rssi > -67): return (network.ssid + ' ▁▂▃▄▅▆').green   // Very Good
-          case (network.rssi > -70): return (network.ssid + ' ▁▂▃▄').yellow    // Okay
-          case (network.rssi > -80): return (network.ssid + ' ▁▂').red         // Not Good
-          case (network.rssi > -90): return (network.ssid + ' ▁').red          // Unusable
-          default: return network.ssid.red                                     // Forget it
+          case (network.rssi.indexOf(' ') !== -1): return ssid.cyan  // Hotspot?
+          case (network.rssi > -30): return `${ssid} ▁▂▃▄▅▆▇█`.green // Amazing
+          case (network.rssi > -67): return `${ssid} ▁▂▃▄▅▆`.green   // Very Good
+          case (network.rssi > -70): return `${ssid} ▁▂▃▄`.yellow    // Okay
+          case (network.rssi > -80): return `${ssid} ▁▂`.red         // Not Good
+          case (network.rssi > -90): return `${ssid} ▁`.red          // Unusable
+          default: return ssid.red                                   // Forget it
         }
       })
-      this.log(ssids.join('\n'))
+      console.log(ssids.join('\n'))
     })
   })
 
