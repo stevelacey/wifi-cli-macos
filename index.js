@@ -9,7 +9,7 @@ const on = 'networksetup -setairportpower en0 on'
 const off = 'networksetup -setairportpower en0 off'
 
 program
-  .command('connect [network] [password]')
+  .command('connect <network> [password]')
   .description('Connect to a Wi-Fi network')
   .alias('c')
   .action(function ({network, password=''}) {
