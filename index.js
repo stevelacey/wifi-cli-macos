@@ -16,7 +16,7 @@ program
   .command('connect <network> [password]')
   .description('Connect to a Wi-Fi network')
   .alias('c')
-  .action(({network, password=''}) => exec(`networksetup -setairportnetwork en0 "${network}" "${password}"`))
+  .action(({network, password=''}) => exec(`networksetup -setairportnetwork en0 "${network}" "${password || pass(network)}"`))
 
 program
   .command('disconnect')
