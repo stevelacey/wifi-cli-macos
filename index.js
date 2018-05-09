@@ -93,7 +93,7 @@ program
 
 program
   .command('dns [servers...]')
-  .description('Set DNS server')
+  .description('Set DNS servers')
   .action(({servers}) => setDns(servers))
 
 program
