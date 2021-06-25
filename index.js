@@ -117,6 +117,6 @@ program
   .description('Turn Wi-Fi off and on again')
   .action(() => off() && on())
 
-if (process.argv.length === 2) process.argv.push('info')
+if (process.argv.length === 2) process.argv.push('list')
 
 program.parse(process.argv)
