@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+const _ = require('lodash')
 const airport = require('airport-wrapper')
 const colors = require('colors')
 const execSync = require('child_process').execSync
@@ -62,7 +63,7 @@ program
 
       const pad = (ssid) => ssid.padEnd(max)
 
-      const ssids = networks.sort(sortNetworks).map((network) => {
+      const ssids = _.uniqBy(networks, 'ssid').sort(sortNetworks).map((network) => {
         switch (true) {
           case (network.rssi.indexOf(' ') !== -1): return network.ssid.cyan       // Hotspot?
           case (network.rssi > -30): return `${pad(network.ssid)} ▁▂▃▄▅▆▇█`.green // Amazing
