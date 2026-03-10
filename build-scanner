@@ -1,0 +1,33 @@
+#!/bin/bash
+set -e
+
+DIR="$(cd "$(dirname "$0")" && pwd)"
+APP="$DIR/build/wifi-scanner.app"
+MACOS="$APP/Contents/MacOS"
+
+mkdir -p "$MACOS"
+
+cat > "$APP/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleIdentifier</key><string>com.wifi-cli.scanner</string>
+    <key>CFBundleName</key><string>wifi-scanner</string>
+    <key>CFBundleVersion</key><string>1.0</string>
+    <key>NSLocationWhenInUseUsageDescription</key><string>wifi-scanner needs location access to read Wi-Fi network names.</string>
+    <key>NSPrincipalClass</key><string>NSApplication</string>
+</dict></plist>
+EOF
+
+swiftc "$DIR/wifi-scanner.swift" -framework Cocoa -framework CoreWLAN -framework CoreLocation -o "$MACOS/wifi-scanner"
+
+codesign --force --sign - --entitlements /dev/stdin "$APP" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>com.apple.security.app-sandbox</key><false/>
+    <key>com.apple.security.personal-information.location</key><true/>
+</dict></plist>
+EOF
+
+echo "Built: $APP"

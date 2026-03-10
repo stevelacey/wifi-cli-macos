@@ -1,6 +1,6 @@
 {
   "name": "wifi-cli-macos",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "Wi-Fi CLI MacOS is a command line utility for managing network connections on MacOS",
   "keywords": [
     "cli",
@@ -29,10 +29,11 @@
     "wifi-cli": "index.js"
   },
   "dependencies": {
-    "airport-wrapper": "0.0.3",
+    "@inquirer/select": "^5.1.0",
     "colors": "^1.1.2",
+    "commander": "^14.0.3",
     "lodash": "^4.17.21",
-    "vorpal": "^1.12.0"
+    "node-wifi": "^2.0.16"
   },
   "main": "index.js",
   "os": [

@@ -1,106 +1,140 @@
 #!/usr/bin/env node
-const _ = require('lodash')
-const airport = require('airport-wrapper')
+const path = require('path')
 const colors = require('colors')
-const execSync = require('child_process').execSync
-const program = require('vorpal')()
+const { execSync } = require('child_process')
+const { program, Help } = require('commander')
+const select = require('@inquirer/select').default
 
-const cloudflared = (action) => console.log(exec(`sudo brew services ${action} cloudflared || true`)) || true
-const currentNetwork = () => exec(`airport -I | awk '/ SSID/ {print substr($0, index($0, $2))}'`)
+const { name, version } = require('./package.json')
 const exec = (cmd) => execSync(cmd).toString().trim()
-const info = () => exec('networksetup -getairportnetwork en0')
+const iface = exec("networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}'") || 'en0'
+const connect = (network, password) => exec(`networksetup -setairportnetwork ${iface} "${network}"${password ? ` "${password}"` : ''}`)
+const currentNetwork = () => {
+  try {
+    exec('sudo ipconfig setverbose 1')
+    const output = exec(`ipconfig getsummary ${iface}`)
+    exec('sudo ipconfig setverbose 0')
+    const match = output.match(/^\s+SSID : (.+)$/m)
+    return match ? match[1].trim() : ''
+  } catch (e) {
+    return ''
+  }
+}
 const findPassword = (ssid) => exec(`security find-generic-password -ga "${ssid}" -w || true`)
-const on = () => exec('networksetup -setairportpower en0 on') || true
-const off = () => exec('networksetup -setairportpower en0 off') || true
-const getDns = () => console.log(`Current DNS Servers: ${exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' ')}`)
-const setDns = (servers) => {
-  if (servers.length === 1 && servers[0] === '-') servers = ['empty'] // treat '-' like 'empty'
-  exec(`networksetup -setdnsservers Wi-Fi ${(servers).join(' ')}`)
+const getDnsServers = () => console.log(`Current DNS Servers: ${exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' ')}`)
+const setDnsServers = (servers) => {
+  exec(`networksetup -setdnsservers Wi-Fi ${servers.join(' ')}`)
   console.log(`Configured DNS Servers: ${exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' ')}`)
 }
-const sortNetworks = (a, b) => {
-  if (a.rssi.indexOf(' ') !== -1) return -1
-  if (b.rssi.indexOf(' ') !== -1) return 1
-  if (a.rssi === b.rssi) return a.ssid === b.ssid ? 0 : a.ssid < b.ssid ? -1 : 1
-  return parseInt(a.rssi) < parseInt(b.rssi) ? 1 : -1
+const listNetworks = () => {
+  if (!scannerReady()) { console.log('Run `wifi setup` first to enable scanning.'); return }
+  if (exec(`"${scanner}" check`) !== 'granted') { console.log('Location permission required. Run `wifi setup` to grant it.'); return }
+  const networks = scanNetworks()
+  if (networks.length === 0) { console.log('No networks found'); return }
+  const current = currentNetwork()
+  const max = networks.reduce((a, b) => a.ssid.length > b.ssid.length ? a : b).ssid.length
+  const pad = (ssid) => ssid.padEnd(max)
+  const label = ({ ssid, rssi }) => {
+    switch (true) {
+      case (rssi > -30): return `${pad(ssid)} ▁▂▃▄▅▆▇█`.green // Amazing
+      case (rssi > -67): return `${pad(ssid)} ▁▂▃▄▅▆`.green   // Very Good
+      case (rssi > -70): return `${pad(ssid)} ▁▂▃▄`.yellow    // Okay
+      case (rssi > -80): return `${pad(ssid)} ▁▂`.red         // Not Good
+      case (rssi > -90): return `${pad(ssid)} ▁`.red          // Unusable
+      default: return ssid.red                                // Forget it
+    }
+  }
+  select({
+    message: 'Select a network',
+    default: current,
+    pageSize: networks.length,
+    choices: networks.map(n => ({ name: label(n), value: n.ssid })),
+  }).then(ssid => {
+    if (ssid === current) { console.log('Already connected.'); return }
+    connect(ssid)
+    console.log(`Connected to ${ssid}`)
+  }).catch(() => {})
+}
+const on = () => exec(`networksetup -setairportpower ${iface} on`) || true
+const off = () => exec(`networksetup -setairportpower ${iface} off`) || true
+const scanner = path.join(__dirname, 'build/wifi-scanner.app/Contents/MacOS/wifi-scanner')
+const scannerReady = () => { try { exec(`test -x "${scanner}"`); return true } catch { return false } }
+const scanNetworks = () => JSON.parse(exec(`"${scanner}" scan`)).sort((a, b) => b.rssi - a.rssi)
+const setup = () => {
+  if (!scannerReady()) {
+    try { exec('xcode-select -p') } catch {
+      console.log('Installing Xcode Command Line Tools...')
+      exec('xcode-select --install')
+      console.log('Re-run `wifi setup` once installation is complete.')
+      return
+    }
+    console.log('Building wifi-scanner...')
+    exec(`"${path.join(__dirname, 'build-scanner')}"`)
+  }
+  exec(`open -a "${path.join(__dirname, 'build/wifi-scanner.app')}" --args request-permission`)
 }
 
 program
-  .command('connect <network> [password]')
-  .description('Connect to a Wi-Fi network')
-  .alias('c')
-  .action(({network, password=''}) => {
-    if (password === '') password = findPassword(network)
-    if (password === '-') password = '' // skip keychain lookup with '-'
-    exec(`networksetup -setairportnetwork en0 "${network}" "${password}"`)
+  .name('wifi')
+  .addHelpCommand(false)
+  .configureHelp({
+    formatHelp: (cmd, helper) => {
+      if (cmd.parent) return new Help().formatHelp(cmd, helper)
+      const cmds = helper.visibleCommands(cmd).sort((a, b) => a.name().localeCompare(b.name()))
+      const termWidth = cmds.reduce((max, c) => Math.max(max, colors.strip(helper.subcommandTerm(c)).length), 0)
+      const cmdLines = cmds.map(c => {
+        const term = helper.subcommandTerm(c)
+        const gap = ' '.repeat(termWidth - colors.strip(term).length + 2)
+        return `  ${term}${gap}${helper.subcommandDescription(c).white}`
+      }).join('\n')
+      return [
+        `${name.white} ${('v' + version).green}`,
+        '',
+        'Usage:'.yellow,
+        `  wifi ${'[command]'.white}`,
+        '',
+        'Commands:'.yellow,
+        cmdLines,
+        '',
+      ].join('\n')
+    },
+    subcommandTerm: (cmd) => {
+      const alias = cmd.alias()
+      const args = cmd.registeredArguments.map(a => a.required ? `<${a.name()}>` : `[${a.name()}]`).join(' ')
+      const cmdName = alias ? `${cmd.name().green} ${('(' + alias + ')').grey}` : cmd.name().green
+      return args ? `${cmdName} ${args.cyan}` : cmdName
+    },
   })
-
-program
-  .command('disconnect')
-  .description('Disconnect from current Wi-Fi network')
-  .alias('dc')
-  .action(() => exec('sudo airport -z'))
-
-program
-  .command('info')
-  .description('Display current Wi-Fi network')
-  .alias('i')
-  .action(() => console.log(info()))
-
-program
-  .command('password')
-  .description('Display current Wi-Fi network password')
-  .alias('p')
-  .action(() => console.log(findPassword(currentNetwork())))
 
 program
   .command('list')
-  .description('List available Wi-Fi networks')
   .alias('ls')
-  .action(() => {
-    airport.scan((err, networks) => {
-      const max = networks.reduce((a, b) => a.ssid.length > b.ssid.length ? a : b).ssid.length
-
-      const pad = (ssid) => ssid.padEnd(max)
-
-      const ssids = _.uniqBy(networks, 'ssid').sort(sortNetworks).map((network) => {
-        switch (true) {
-          case (network.rssi.indexOf(' ') !== -1): return network.ssid.cyan       // Hotspot?
-          case (network.rssi > -30): return `${pad(network.ssid)} ▁▂▃▄▅▆▇█`.green // Amazing
-          case (network.rssi > -67): return `${pad(network.ssid)} ▁▂▃▄▅▆`.green   // Very Good
-          case (network.rssi > -70): return `${pad(network.ssid)} ▁▂▃▄`.yellow    // Okay
-          case (network.rssi > -80): return `${pad(network.ssid)} ▁▂`.red         // Not Good
-          case (network.rssi > -90): return `${pad(network.ssid)} ▁`.red          // Unusable
-          default: return network.ssid.red                                        // Forget it
-        }
-      })
-      console.log(ssids.join('\n'))
-    })
-  })
+  .description('List nearby Wi-Fi networks')
+  .action(listNetworks)
 
 program
-  .command('cloudflared on')
-  .description('Turn Cloudflared on and set DNS to localhost')
-  .alias('cf on')
-  .action(() => cloudflared('start') && setDns(['127.0.0.1']))
+  .command('connect [network] [password]')
+  .alias('c')
+  .description('Connect to a Wi-Fi network')
+  .action((network, password) => network ? connect(network, password) : listNetworks())
 
 program
-  .command('cloudflared off')
-  .description('Turn Cloudflared off reset DNS to network defaults')
-  .alias('cf off')
-  .action(() => cloudflared('stop') && setDns(['empty']))
+  .command('disconnect')
+  .alias('dc')
+  .description('Disconnect from current Wi-Fi network')
+  .action(off)
 
 program
-  .command('cloudflared restart')
-  .description('Turn Cloudflared off and on again and set DNS to localhost')
-  .alias('cf restart')
-  .alias('cf r')
-  .action(() => cloudflared('restart') && setDns(['127.0.0.1']))
+  .command('info')
+  .alias('i')
+  .description('Display current Wi-Fi network')
+  .action(() => console.log(`Current Wi-Fi Network: ${currentNetwork()}`))
 
 program
-  .command('dns [servers...]')
-  .description('Set DNS servers')
-  .action(({servers}) => !servers ? getDns() : setDns(servers))
+  .command('password')
+  .alias('p')
+  .description('Display current Wi-Fi network password')
+  .action(() => console.log(findPassword(currentNetwork())))
 
 program
   .command('on')
@@ -118,6 +152,19 @@ program
   .description('Turn Wi-Fi off and on again')
   .action(() => off() && on())
 
-if (process.argv.length === 2) process.argv.push('list')
+program
+  .command('dns [servers...]')
+  .description('Display or set DNS servers (--reset for defaults)')
+  .option('-r, --reset', 'Reset to network defaults')
+  .action((servers, opts) => {
+    if (opts.reset) return setDnsServers(['empty'])
+    if (!servers.length) return getDnsServers()
+    setDnsServers(servers)
+  })
+
+program
+  .command('setup')
+  .description('Grant location permission for Wi-Fi scanning')
+  .action(setup)
 
 program.parse(process.argv)
