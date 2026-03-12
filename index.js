@@ -4,7 +4,7 @@ const colors = require('colors')
 const path = require('path')
 const { execSync, spawnSync } = require('child_process')
 const { intro, isCancel, select, password: promptPassword } = require('@clack/prompts')
-const { program, Help } = require('commander')
+const { program } = require('commander')
 const { version } = require('./package.json')
 const title = `${name.white} ${('v' + version).green}`
 const exec = (cmd) => execSync(cmd).toString().trim()
@@ -20,10 +20,31 @@ const disconnect = () => {
   spawnSync('networksetup', ['-removepreferredwirelessnetwork', iface, n], { stdio: 'inherit' })
   restart()
 }
-const getDnsServers = () => console.log(`Current DNS Servers: ${exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' ')}`)
+const dnsPresets = {
+  cloudflare: ['1.1.1.1', '1.0.0.1'],
+  google: ['8.8.8.8', '8.8.4.4'],
+  opendns: ['208.67.222.222', '208.67.220.220'],
+  quad9: ['9.9.9.9', '149.112.112.112'],
+}
+const dnsPresetsDescription = (() => {
+  const entries = Object.entries(dnsPresets)
+  const maxLen = Math.max(...entries.map(([k]) => k.length))
+  const lines = entries.map(([k, v]) => `  ${(k + ':').padEnd(maxLen + 1).green}  ${v.join(' ').white}`).join('\n')
+  return `Display or set DNS servers\n\n${'Presets:'.yellow}\n${lines}`
+})()
+const getDnsServers = () => {
+  const raw = exec('networksetup -getdnsservers Wi-Fi')
+  const current = raw.startsWith("There aren't") ? 'auto' : raw.split('\n').join(' ')
+  const entries = Object.entries(dnsPresets)
+  const maxLen = Math.max(...entries.map(([k]) => k.length))
+  const presetLines = entries
+    .map(([k, v]) => `  ${(k + ':').padEnd(maxLen + 1).green}  ${v.join(' ').white}`)
+    .join('\n')
+  console.log(`${'Current:'.yellow} ${current.white}\n\n${'Presets:'.yellow}\n${presetLines}`)
+}
 const setDnsServers = (servers) => {
   exec(`networksetup -setdnsservers Wi-Fi ${servers.join(' ')}`)
-  console.log(`Configured DNS Servers: ${exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' ')}`)
+  console.log(exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' '))
 }
 const ensureScanner = () => {
   if (!scannerReady()) {
@@ -111,7 +132,19 @@ program
   .addHelpCommand(false)
   .configureHelp({
     formatHelp: (cmd, helper) => {
-      if (cmd.parent) return new Help().formatHelp(cmd, helper)
+      if (cmd.parent) {
+        const opts = helper.visibleOptions(cmd)
+        const optLines = opts.map(o => `  ${o.flags.green}  ${o.description.white}`).join('\n')
+        const desc = cmd.description()
+        return [
+          `${'Usage:'.yellow} wifi ${cmd.name()} ${cmd.usage().cyan}`,
+          '',
+          ...(desc ? [desc.white, ''] : []),
+          'Options:'.yellow,
+          optLines,
+          '',
+        ].join('\n')
+      }
       const cmds = helper.visibleCommands(cmd).sort((a, b) => a.name().localeCompare(b.name()))
       const termWidth = cmds.reduce((max, c) => Math.max(max, colors.strip(helper.subcommandTerm(c)).length), 0)
       const cmdLines = cmds.map(c => {
@@ -132,7 +165,7 @@ program
     },
     subcommandTerm: (cmd) => {
       const alias = cmd.alias()
-      const args = cmd.registeredArguments.map(a => a.required ? `<${a.name()}>` : `[${a.name()}]`).join(' ')
+      const args = cmd.registeredArguments.map(a => a.required ? `<${a.name()}${a.variadic ? '...' : ''}>` : `[${a.name()}${a.variadic ? '...' : ''}]`).join(' ')
       const cmdName = alias ? `${cmd.name().green} ${('(' + alias + ')').grey}` : cmd.name().green
       return args ? `${cmdName} ${args.cyan}` : cmdName
     },
@@ -141,25 +174,25 @@ program
 program
   .command('list')
   .alias('ls')
-  .description('List nearby Wi-Fi networks')
+  .summary('List nearby Wi-Fi networks')
   .action(listNetworks)
 
 program
   .command('connect [network] [password]')
   .alias('c')
-  .description('Connect to a Wi-Fi network')
+  .summary('Connect to a Wi-Fi network')
   .action((network, password) => network ? connect(network, password || findPassword(network)) : selectNetwork())
 
 program
   .command('disconnect')
   .alias('dc')
-  .description('Disconnect from current Wi-Fi network')
+  .summary('Disconnect from current Wi-Fi network')
   .action(disconnect)
 
 program
   .command('info')
   .alias('i')
-  .description('Display current Wi-Fi connection details')
+  .summary('Display current Wi-Fi connection details')
   .action(() => {
     const n = currentNetwork()
     if (!n) { console.log('Not connected'); return }
@@ -167,11 +200,11 @@ program
     const ip = tryExec(`ipconfig getifaddr ${iface}`)
     const router = tryExec(`route -n get default | awk '/gateway/{print $2}'`)
     const dnsRaw = tryExec(`networksetup -getdnsservers Wi-Fi`)
-    const dns = dnsRaw.startsWith('There') ? 'Auto' : dnsRaw.split('\n').join(', ')
+    const dns = dnsRaw.startsWith("There aren't any DNS Servers") ? 'auto' : dnsRaw.split('\n').join(' ')
     const mac = tryExec(`ifconfig ${iface} | awk '/ether/{print $2}'`)
-    const row = (label, value) => value ? `${label.grey}  ${value}` : ''
+    const row = (label, value) => value ? `${label.yellow}  ${value}` : ''
     console.log([
-      `${'Network'.grey}  ${n.white}`,
+      row('Network', n),
       row('IP     ', ip),
       row('Router ', router),
       row('DNS    ', dns),
@@ -182,32 +215,33 @@ program
 program
   .command('password')
   .alias('p')
-  .description('Display current Wi-Fi network password')
+  .summary('Display current Wi-Fi network password')
   .action(() => console.log(findPassword(currentNetwork())))
 
 program
   .command('on')
-  .description('Turn Wi-Fi on')
+  .summary('Turn Wi-Fi on')
   .action(on)
 
 program
   .command('off')
-  .description('Turn Wi-Fi off')
+  .summary('Turn Wi-Fi off')
   .action(off)
 
 program
   .command('restart')
   .alias('r')
-  .description('Turn Wi-Fi off and on again')
+  .summary('Turn Wi-Fi off and on again')
   .action(restart)
 
 program
   .command('dns [servers...]')
-  .description('Display or set DNS servers (--reset for defaults)')
-  .option('-r, --reset', 'Reset to network defaults')
-  .action((servers, opts) => {
-    if (opts.reset) return setDnsServers(['empty'])
+  .summary('Display or set DNS servers (auto to reset)')
+  .description(dnsPresetsDescription)
+  .action((servers) => {
     if (!servers.length) return getDnsServers()
+    if (servers.length === 1 && ['auto'].includes(servers[0])) return setDnsServers(['empty'])
+    if (servers.length === 1 && dnsPresets[servers[0]]) return setDnsServers(dnsPresets[servers[0]])
     setDnsServers(servers)
   })
 

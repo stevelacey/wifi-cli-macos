@@ -1,17 +1,17 @@
-# Wi-Fi CLI MacOS
+# 🛜 Wi-Fi CLI MacOS
 
-Wi-Fi CLI MacOS is a command line utility for managing network connections on MacOS
+Wi-Fi CLI MacOS is a command line utility for managing network connections on MacOS.
 
-```
-wifi connect (c) <network> [password]  Connect to a Wi-Fi network
-wifi disconnect (dc)                   Disconnect from current Wi-Fi network
-wifi info (i)                          Display current Wi-Fi network
-wifi password (p)                      Display current Wi-Fi network password
-wifi list (ls)                         List nearby Wi-Fi networks
-wifi dns [servers...]                  Set DNS servers
-wifi on                                Turn Wi-Fi on
-wifi off                               Turn Wi-Fi off
-wifi restart (r)                       Turn Wi-Fi off and on again
+```sh
+wifi connect (c) [network] [password]  # Connect to a Wi-Fi network
+wifi disconnect (dc)                   # Disconnect from current Wi-Fi network
+wifi info (i)                          # Display current Wi-Fi connection details
+wifi password (p)                      # Display current Wi-Fi network password
+wifi list (ls)                         # List nearby Wi-Fi networks
+wifi dns [servers...]                  # Display or set DNS servers (auto to reset)
+wifi on                                # Turn Wi-Fi on
+wifi off                               # Turn Wi-Fi off
+wifi restart (r)                       # Turn Wi-Fi off and on again
 ```
 
 ## Installation
@@ -20,46 +20,64 @@ wifi restart (r)                       Turn Wi-Fi off and on again
 npm install -g wifi-cli-macos
 ```
 
+> Xcode Command Line Tools are required. If not installed, you'll be prompted on first use.
+
 ## Basic usage
 
 ```sh
-wifi ls
-Network 1 ▁▂▃▄▅▆
-Network 2 ▁▂▃▄▅
-Network 3 ▁▂▃
-Network 4 ▁▂
-Network 5 ▁▂
-Network 6 ▁
+wifi list
+Network 1 ▁▂▃▄▅▆    2.4/5GHz  WPA2
+Network 2 ▁▂▃▄▅▆    5GHz      WPA2/3
+Network 3 ▁▂▃▄      2.4GHz    WPA2
 ```
 
-```sh
-wifi c "Network 1" changeme
-```
+Running `wifi connect` with no arguments opens an interactive network selector:
 
 ```sh
-wifi i
-Current Wi-Fi Network: Network 1
+◆  Select a network to join
+│  ● Network 1 ▁▂▃▄▅▆    2.4/5GHz  WPA2
+│  ○ Network 2 ▁▂▃▄▅▆    5GHz      WPA2/3
+│  ○ Network 3 ▁▂▃▄      2.4GHz    WPA2
+```
+
+Or supply credentials directly:
+
+```sh
+wifi connect "Network 1" password
+```
+
+### Display connection details
+
+```sh
+wifi info
+Network  Network 1
+IP       192.168.1.100
+Router   192.168.1.1
+DNS      auto
+MAC      a1:b2:c3:d4:e5:f6
 ```
 
 ### Configure DNS servers
 
 ```sh
 wifi dns
-Current DNS Servers: There aren't any DNS Servers set on Wi-Fi.
+Current: 1.1.1.1 1.0.0.1
+
+Presets:
+  cloudflare:  1.1.1.1 1.0.0.1
+  google:      8.8.8.8 8.8.4.4
+  opendns:     208.67.222.222 208.67.220.220
+  quad9:       9.9.9.9 149.112.112.112
 ```
 
 ```sh
+wifi dns cloudflare
 wifi dns 1.1.1.1 8.8.8.8
-Configured DNS Servers: 1.1.1.1 8.8.8.8
+wifi dns auto
 ```
 
-```sh
-wifi dns -
-Configured DNS Servers: There aren't any DNS Servers set on Wi-Fi.
-```
-
-### Turn Wi-Fi off and on again
+### Restart Wi-Fi
 
 ```sh
-wifi r
+wifi restart
 ```
