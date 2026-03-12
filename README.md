@@ -17,6 +17,13 @@ wifi restart (r)                       # Turn Wi-Fi off and on again
 ## Installation
 
 ```sh
+brew tap stevelacey/tap
+brew install wifi-cli
+```
+
+Or via npm:
+
+```sh
 npm install -g wifi-cli-macos
 ```
 
