@@ -169,6 +169,7 @@ program
       return args ? `${cmdName} ${args.cyan}` : cmdName
     },
   })
+  .version(version, '-v, --version')
 
 program
   .command('list')
