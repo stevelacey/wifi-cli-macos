@@ -159,8 +159,25 @@ program
 program
   .command('info')
   .alias('i')
-  .description('Display current Wi-Fi network')
-  .action(() => { const n = currentNetwork(); console.log(n || 'Not connected') })
+  .description('Display current Wi-Fi connection details')
+  .action(() => {
+    const n = currentNetwork()
+    if (!n) { console.log('Not connected'); return }
+    const tryExec = (cmd) => { try { return exec(cmd) } catch { return '' } }
+    const ip = tryExec(`ipconfig getifaddr ${iface}`)
+    const router = tryExec(`route -n get default | awk '/gateway/{print $2}'`)
+    const dnsRaw = tryExec(`networksetup -getdnsservers Wi-Fi`)
+    const dns = dnsRaw.startsWith('There') ? 'Auto' : dnsRaw.split('\n').join(', ')
+    const mac = tryExec(`ifconfig ${iface} | awk '/ether/{print $2}'`)
+    const row = (label, value) => value ? `${label.grey}  ${value}` : ''
+    console.log([
+      `${'Network'.grey}  ${n.white}`,
+      row('IP     ', ip),
+      row('Router ', router),
+      row('DNS    ', dns),
+      row('MAC    ', mac),
+    ].filter(Boolean).join('\n'))
+  })
 
 program
   .command('password')
