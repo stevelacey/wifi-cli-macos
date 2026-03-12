@@ -21,7 +21,8 @@ EOF
 
 swiftc "$DIR/wifi-scanner.swift" -framework Cocoa -framework CoreWLAN -framework CoreLocation -o "$MACOS/wifi-scanner"
 
-codesign --force --sign - --entitlements /dev/stdin "$APP" <<EOF
+ENTITLEMENTS=$(mktemp /tmp/wifi-scanner-entitlements.XXXXXX.plist)
+cat > "$ENTITLEMENTS" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -29,5 +30,7 @@ codesign --force --sign - --entitlements /dev/stdin "$APP" <<EOF
     <key>com.apple.security.personal-information.location</key><true/>
 </dict></plist>
 EOF
+codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP"
+rm "$ENTITLEMENTS"
 
 echo "Built: $APP"
