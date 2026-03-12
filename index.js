@@ -1,19 +1,25 @@
 #!/usr/bin/env node
+const name = 'Wi-Fi CLI MacOS'
 const colors = require('colors')
 const path = require('path')
-const readline = require('readline')
-const select = require('@inquirer/select').default
-const { execSync } = require('child_process')
+const { execSync, spawnSync } = require('child_process')
+const { intro, isCancel, select, password: promptPassword } = require('@clack/prompts')
 const { program, Help } = require('commander')
-
-const { name, version } = require('./package.json')
+const { version } = require('./package.json')
+const title = `${name.white} ${('v' + version).green}`
 const exec = (cmd) => execSync(cmd).toString().trim()
 const iface = exec("networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}'") || 'en0'
 const scanner = path.join(__dirname, 'build/wifi-scanner.app/Contents/MacOS/wifi-scanner')
 const scannerReady = () => { try { exec(`test -x "${scanner}"`); return true } catch { return false } }
-const connect = (network, password) => exec(`networksetup -setairportnetwork ${iface} "${network}"${password ? ` "${password}"` : ''}`)
+const connect = (network, password) => spawnSync('networksetup', ['-setairportnetwork', iface, network, password].filter(Boolean), { stdio: 'inherit' })
 const currentNetwork = () => { if (!ensureScanner()) return ''; try { return execSync(`"${scanner}" current`, { timeout: 5000 }).toString().trim() } catch { return '' } }
-const findPassword = (ssid) => exec(`security find-generic-password -ga "${ssid}" -w || true`)
+const findPassword = (ssid) => { try { return execSync(`security find-generic-password -ga "${ssid}" -w 2>/dev/null`).toString().trim() } catch { return '' } }
+const disconnect = () => {
+  const n = currentNetwork()
+  if (!n) return
+  spawnSync('networksetup', ['-removepreferredwirelessnetwork', iface, n], { stdio: 'inherit' })
+  restart()
+}
 const getDnsServers = () => console.log(`Current DNS Servers: ${exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' ')}`)
 const setDnsServers = (servers) => {
   exec(`networksetup -setdnsservers Wi-Fi ${servers.join(' ')}`)
@@ -48,12 +54,13 @@ const listNetworks = () => {
   if (!result) return
   const { networks, current } = result
   if (networks.length === 0) { console.log('No networks found'); return }
-  const label = renderNetwork(networks)
+  const label = renderNetworks(networks)
   console.log(networks.map(n => label(n) + (n.ssid === current ? ' ◀'.green : '')).join('\n'))
 }
 const on = () => exec(`networksetup -setairportpower ${iface} on`) || true
 const off = () => exec(`networksetup -setairportpower ${iface} off`) || true
-const renderNetwork = (networks) => {
+const restart = () => off() && on()
+const renderNetworks = (networks) => {
   const max = networks.reduce((a, b) => a.ssid.length > b.ssid.length ? a : b).ssid.length
   const pad = (ssid) => ssid.padEnd(max)
   return ({ ssid, rssi, security, band }) => {
@@ -70,27 +77,33 @@ const renderNetwork = (networks) => {
     }
   }
 }
-const selectNetwork = () => {
+const selectNetwork = async () => {
   const result = getNetworks()
   if (!result) return
   const { networks, current } = result
   if (networks.length === 0) { console.log('No networks found'); return }
-  const label = renderNetwork(networks)
-  const ac = new AbortController()
-  readline.emitKeypressEvents(process.stdin)
-  if (process.stdin.isTTY) process.stdin.setRawMode(true)
-  process.stdin.once('keypress', (_, key) => { if (key.name === 'escape') ac.abort() })
-  select({
-    message: 'Select a network to connect',
-    default: current,
-    pageSize: networks.length,
-    choices: networks.map(n => ({ name: label(n), value: n.ssid })),
-  }, { signal: ac.signal }).then(ssid => {
-    process.stdout.write('\n')
-    if (ssid === current) { console.log('Already connected.'); return }
-    connect(ssid)
-    console.log(`Connected to ${ssid}`)
-  }).catch(() => {})
+  const label = renderNetworks(networks)
+  intro(title)
+  const ssid = await select({
+    message: 'Select a network to join',
+    initialValue: current,
+    maxItems: networks.length,
+    options: networks.map(n => ({ label: '\x1b[0m' + label(n), value: n.ssid })),
+  })
+  if (isCancel(ssid) || ssid === current) return
+  const network = networks.find(n => n.ssid === ssid)
+  let password = ''
+  if (network && network.security) {
+    const input = await promptPassword({ message: 'Password (leave blank to use keychain)' })
+    if (isCancel(input)) return
+    if (input) {
+      password = input
+    } else {
+      password = findPassword(ssid)
+      if (password) process.stdout.write(`\x1b[1A\x1b[2K\r│  ${'▪'.repeat(password.length)}\n`.grey)
+    }
+  }
+  connect(ssid, password)
 }
 
 program
@@ -107,7 +120,7 @@ program
         return `  ${term}${gap}${helper.subcommandDescription(c).white}`
       }).join('\n')
       return [
-        `${name.white} ${('v' + version).green}`,
+        title,
         '',
         'Usage:'.yellow,
         `  wifi ${'[command]'.white}`,
@@ -135,13 +148,13 @@ program
   .command('connect [network] [password]')
   .alias('c')
   .description('Connect to a Wi-Fi network')
-  .action((network, password) => network ? connect(network, password) : selectNetwork())
+  .action((network, password) => network ? connect(network, password || findPassword(network)) : selectNetwork())
 
 program
   .command('disconnect')
   .alias('dc')
   .description('Disconnect from current Wi-Fi network')
-  .action(off)
+  .action(disconnect)
 
 program
   .command('info')
@@ -169,7 +182,7 @@ program
   .command('restart')
   .alias('r')
   .description('Turn Wi-Fi off and on again')
-  .action(() => off() && on())
+  .action(restart)
 
 program
   .command('dns [servers...]')

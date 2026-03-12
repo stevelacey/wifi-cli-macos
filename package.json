@@ -18,21 +18,14 @@
     "url": "https://steve.ly"
   },
   "license": "MIT",
-  "licenses": [
-    {
-      "type": "MIT",
-      "url": "https://github.com/stevelacey/wifi-cli-macos/blob/master/LICENSE"
-    }
-  ],
   "bin": {
     "wifi": "index.js",
     "wifi-cli": "index.js"
   },
   "dependencies": {
-    "@inquirer/select": "^5.1.0",
+    "@clack/prompts": "^1.1.0",
     "colors": "^1.1.2",
     "commander": "^14.0.3",
-    "lodash": "^4.17.21",
     "node-wifi": "^2.0.16"
   },
   "main": "index.js",
