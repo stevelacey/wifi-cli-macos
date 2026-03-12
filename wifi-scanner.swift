@@ -48,7 +48,33 @@ class App: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
             if let cached = iface.cachedScanResults() { nets += cached }
             let networks = nets.compactMap { n -> [String: Any]? in
                 guard let ssid = n.ssid, !ssid.isEmpty, seen.insert(ssid).inserted else { return nil }
-                return ["ssid": ssid, "rssi": n.rssiValue]
+                let security: String
+                let wpa3 = n.supportsSecurity(.wpa3Personal) || n.supportsSecurity(.wpa3Enterprise)
+                let wpa2 = n.supportsSecurity(.wpa2Personal) || n.supportsSecurity(.wpa2Enterprise)
+                let wpa  = n.supportsSecurity(.wpaPersonal)  || n.supportsSecurity(.wpaEnterprise)
+                if wpa3 && wpa2 {
+                    security = "WPA2/3"
+                } else if wpa3 {
+                    security = "WPA3"
+                } else if wpa2 {
+                    security = "WPA2"
+                } else if wpa {
+                    security = "WPA"
+                } else if n.supportsSecurity(.dynamicWEP) {
+                    security = "WEP"
+                } else {
+                    security = ""
+                }
+                var entry: [String: Any] = ["ssid": ssid, "rssi": n.rssiValue, "security": security]
+                if let ch = n.wlanChannel {
+                    switch ch.channelBand {
+                    case .band2GHz: entry["band"] = "2.4"
+                    case .band5GHz: entry["band"] = "5"
+                    case .band6GHz: entry["band"] = "6"
+                    default: break
+                    }
+                }
+                return entry
             }.sorted { ($0["rssi"] as! Int) > ($1["rssi"] as! Int) }
             let result: [String: Any] = ["current": current, "networks": networks]
             if let json = try? JSONSerialization.data(withJSONObject: result) {
@@ -57,16 +83,13 @@ class App: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
             fflush(stdout)
             exit(0)
         default: // request-permission
-            app.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
-            let a = NSAlert()
-            a.messageText = "Allow Location Access"
-            a.informativeText = ok
-                ? "Location access is already granted. wifi-cli is ready to use."
-                : "wifi-cli needs Location Services to read Wi-Fi network names.\n\nWhen prompted, click Allow. If no prompt appears, enable wifi-scanner in:\nSystem Settings → Privacy & Security → Location Services"
-            a.addButton(withTitle: "OK")
-            a.runModal()
-            exit(0)
+            if ok {
+                print("granted")
+                fflush(stdout)
+                exit(0)
+            }
+            fputs("denied: enable wifi-scanner in System Settings → Privacy & Security → Location Services\n", stderr)
+            exit(1)
         }
     }
 }

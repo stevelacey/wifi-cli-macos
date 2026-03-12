@@ -39,14 +39,17 @@ const off = () => exec(`networksetup -setairportpower ${iface} off`) || true
 const renderNetwork = (networks) => {
   const max = networks.reduce((a, b) => a.ssid.length > b.ssid.length ? a : b).ssid.length
   const pad = (ssid) => ssid.padEnd(max)
-  return ({ ssid, rssi }) => {
+  return ({ ssid, rssi, security, band }) => {
+    const bandStr = (band ? `${band}GHz` : '').padEnd(6)
+    const secStr = (security || '').padEnd(6)
+    const sec = `  ${bandStr}  ${secStr}`.grey
     switch (true) {
-      case (rssi > -30): return `${pad(ssid)} ▁▂▃▄▅▆▇█`.green
-      case (rssi > -67): return `${pad(ssid)} ▁▂▃▄▅▆  `.green
-      case (rssi > -70): return `${pad(ssid)} ▁▂▃▄    `.yellow
-      case (rssi > -80): return `${pad(ssid)} ▁▂      `.red
-      case (rssi > -90): return `${pad(ssid)} ▁       `.red
-      default:           return `${pad(ssid)}         `.red
+      case (rssi > -30): return `${pad(ssid)} ▁▂▃▄▅▆▇█`.green + sec
+      case (rssi > -67): return `${pad(ssid)} ▁▂▃▄▅▆  `.green + sec
+      case (rssi > -70): return `${pad(ssid)} ▁▂▃▄    `.yellow + sec
+      case (rssi > -80): return `${pad(ssid)} ▁▂      `.red + sec
+      case (rssi > -90): return `${pad(ssid)} ▁       `.red + sec
+      default:           return `${pad(ssid)}         `.red + sec
     }
   }
 }
@@ -81,7 +84,12 @@ const setup = () => {
   }
   console.log('Building wifi-scanner...')
   exec(`"${path.join(__dirname, 'build-scanner')}"`)
-  execSync(`"${scanner}" request-permission`, { stdio: 'inherit' })
+  try {
+    const result = execSync(`"${scanner}" request-permission`, { timeout: 30000 }).toString().trim()
+    console.log(result === 'granted' ? 'Already granted. Ready to use.' : 'Location access granted. Ready to use.')
+  } catch {
+    console.error('Location permission denied. Enable wifi-scanner in System Settings → Privacy & Security → Location Services')
+  }
 }
 
 program
