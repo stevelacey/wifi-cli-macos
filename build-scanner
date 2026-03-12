@@ -16,6 +16,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundleVersion</key><string>1.0</string>
     <key>NSLocationWhenInUseUsageDescription</key><string>wifi-scanner needs location access to read Wi-Fi network names.</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>LSUIElement</key><true/>
 </dict></plist>
 EOF
 

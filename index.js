@@ -12,15 +12,32 @@ const iface = exec("networksetup -listallhardwareports | awk '/Wi-Fi/{getline; p
 const scanner = path.join(__dirname, 'build/wifi-scanner.app/Contents/MacOS/wifi-scanner')
 const scannerReady = () => { try { exec(`test -x "${scanner}"`); return true } catch { return false } }
 const connect = (network, password) => exec(`networksetup -setairportnetwork ${iface} "${network}"${password ? ` "${password}"` : ''}`)
-const currentNetwork = () => { try { return execSync(`"${scanner}" current`, { timeout: 5000 }).toString().trim() } catch { return '' } }
+const currentNetwork = () => { if (!ensureScanner()) return ''; try { return execSync(`"${scanner}" current`, { timeout: 5000 }).toString().trim() } catch { return '' } }
 const findPassword = (ssid) => exec(`security find-generic-password -ga "${ssid}" -w || true`)
 const getDnsServers = () => console.log(`Current DNS Servers: ${exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' ')}`)
 const setDnsServers = (servers) => {
   exec(`networksetup -setdnsservers Wi-Fi ${servers.join(' ')}`)
   console.log(`Configured DNS Servers: ${exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' ')}`)
 }
+const ensureScanner = () => {
+  if (!scannerReady()) {
+    try { exec('xcode-select -p') } catch {
+      console.error('Xcode Command Line Tools required. Install with: xcode-select --install')
+      return false
+    }
+    exec(`"${path.join(__dirname, 'build-scanner')}"`)
+  }
+  const granted = (() => { try { return execSync(`"${scanner}" check`, { timeout: 5000 }).toString().trim() === 'granted' } catch { return false } })()
+  if (!granted) {
+    try { execSync(`"${scanner}" request-permission`, { timeout: 30000 }) } catch {
+      console.error('Location permission denied. Enable wifi-scanner in System Settings → Privacy & Security → Location Services')
+      return false
+    }
+  }
+  return true
+}
 const getNetworks = () => {
-  if (!scannerReady()) { console.log('Run `wifi setup` first to enable scanning.'); return null }
+  if (!ensureScanner()) return null
   const raw = JSON.parse(execSync(`"${scanner}" scan`, { timeout: 15000 }).toString().trim())
   const networks = (raw.networks || []).sort((a, b) => b.rssi - a.rssi)
   const current = raw.current || currentNetwork()
@@ -40,7 +57,7 @@ const renderNetwork = (networks) => {
   const max = networks.reduce((a, b) => a.ssid.length > b.ssid.length ? a : b).ssid.length
   const pad = (ssid) => ssid.padEnd(max)
   return ({ ssid, rssi, security, band }) => {
-    const bandStr = (band ? `${band}GHz` : '').padEnd(6)
+    const bandStr = (band || '').padEnd(9)
     const secStr = (security || '').padEnd(6)
     const sec = `  ${bandStr}  ${secStr}`.grey
     switch (true) {
@@ -74,22 +91,6 @@ const selectNetwork = () => {
     connect(ssid)
     console.log(`Connected to ${ssid}`)
   }).catch(() => {})
-}
-const setup = () => {
-  try { exec('xcode-select -p') } catch {
-    console.log('Installing Xcode Command Line Tools...')
-    exec('xcode-select --install')
-    console.log('Re-run `wifi setup` once installation is complete.')
-    return
-  }
-  console.log('Building wifi-scanner...')
-  exec(`"${path.join(__dirname, 'build-scanner')}"`)
-  try {
-    const result = execSync(`"${scanner}" request-permission`, { timeout: 30000 }).toString().trim()
-    console.log(result === 'granted' ? 'Already granted. Ready to use.' : 'Location access granted. Ready to use.')
-  } catch {
-    console.error('Location permission denied. Enable wifi-scanner in System Settings → Privacy & Security → Location Services')
-  }
 }
 
 program
@@ -179,10 +180,5 @@ program
     if (!servers.length) return getDnsServers()
     setDnsServers(servers)
   })
-
-program
-  .command('setup')
-  .description('Grant location permission for Wi-Fi scanning')
-  .action(setup)
 
 program.parse(process.argv)

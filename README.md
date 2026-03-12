@@ -12,7 +12,6 @@ wifi dns [servers...]                  Set DNS servers
 wifi on                                Turn Wi-Fi on
 wifi off                               Turn Wi-Fi off
 wifi restart (r)                       Turn Wi-Fi off and on again
-wifi setup                             Grant location permission for Wi-Fi scanning
 ```
 
 ## Installation
@@ -20,8 +19,6 @@ wifi setup                             Grant location permission for Wi-Fi scann
 ```sh
 npm install -g wifi-cli-macos
 ```
-
-After installing, run `wifi setup` once to grant the Location Services permission that macOS 14+ requires to read Wi-Fi network names.
 
 ## Basic usage
 
