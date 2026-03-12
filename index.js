@@ -7,6 +7,7 @@ const { intro, isCancel, select, password: promptPassword } = require('@clack/pr
 const { program } = require('commander')
 const { version } = require('./package.json')
 const title = `${name.white} ${('v' + version).green}`
+const bars = '▁▂▃▄▅▆▇'
 const exec = (cmd) => execSync(cmd).toString().trim()
 const iface = exec("networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}'") || 'en0'
 const scanner = path.join(__dirname, 'build/wifi-scanner.app/Contents/MacOS/wifi-scanner')
@@ -81,21 +82,19 @@ const listNetworks = () => {
 const on = () => exec(`networksetup -setairportpower ${iface} on`) || true
 const off = () => exec(`networksetup -setairportpower ${iface} off`) || true
 const restart = () => off() && on()
+const renderSignal = (rssi) => {
+  const n = rssi > -30 ? 7 : rssi > -67 ? 6 : rssi > -70 ? 4 : rssi > -80 ? 2 : rssi > -90 ? 1 : 0
+  const color = rssi > -67 ? 'green' : rssi > -70 ? 'yellow' : 'red'
+  const filled = bars.slice(0, n)
+  const empty = bars.slice(n)
+  return { signal: process.stdout.isTTY ? filled[color] + empty.dim.grey : filled.padEnd(bars.length), color }
+}
 const renderNetworks = (networks) => {
   const max = networks.reduce((a, b) => a.ssid.length > b.ssid.length ? a : b).ssid.length
-  const pad = (ssid) => ssid.padEnd(max)
   return ({ ssid, rssi, security, band }) => {
-    const bandStr = (band || '').padEnd(9)
-    const secStr = (security || '').padEnd(6)
-    const sec = `  ${bandStr}  ${secStr}`.grey
-    switch (true) {
-      case (rssi > -30): return `${pad(ssid)} ▁▂▃▄▅▆▇█`.green + sec
-      case (rssi > -67): return `${pad(ssid)} ▁▂▃▄▅▆  `.green + sec
-      case (rssi > -70): return `${pad(ssid)} ▁▂▃▄    `.yellow + sec
-      case (rssi > -80): return `${pad(ssid)} ▁▂      `.red + sec
-      case (rssi > -90): return `${pad(ssid)} ▁       `.red + sec
-      default:           return `${pad(ssid)}         `.red + sec
-    }
+    const { signal, color } = renderSignal(rssi)
+    const details = `${(band || '').padEnd(9)} ${(security || '').padEnd(6)}`
+    return `${ssid.padEnd(max)[color]}  ${signal}  ${details.grey}`
   }
 }
 const selectNetwork = async () => {
@@ -240,7 +239,7 @@ program
   .description(dnsPresetsDescription)
   .action((servers) => {
     if (!servers.length) return getDnsServers()
-    if (servers.length === 1 && ['auto'].includes(servers[0])) return setDnsServers(['empty'])
+    if (servers.length === 1 && servers[0] === 'auto') return setDnsServers(['empty'])
     if (servers.length === 1 && dnsPresets[servers[0]]) return setDnsServers(dnsPresets[servers[0]])
     setDnsServers(servers)
   })

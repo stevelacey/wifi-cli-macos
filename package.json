@@ -1,6 +1,6 @@
 {
   "name": "wifi-cli-macos",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Wi-Fi CLI MacOS is a command line utility for managing network connections on MacOS",
   "keywords": [
     "cli",
