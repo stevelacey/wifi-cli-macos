@@ -5,6 +5,7 @@ const path = require('path')
 const { execSync, spawnSync } = require('child_process')
 const { intro, isCancel, select, password: promptPassword } = require('@clack/prompts')
 const { program } = require('commander')
+const qrcode = require('qrcode-terminal')
 const { version } = require('./package.json')
 const title = `${name.white} ${('v' + version).green}`
 const bars = '▁▂▃▄▅▆▇'
@@ -233,6 +234,22 @@ program
   .alias('r')
   .summary('Turn Wi-Fi off and on again')
   .action(restart)
+
+program
+  .command('qr')
+  .summary('Display a QR code to join the current Wi-Fi network')
+  .action(() => {
+    const ssid = currentNetwork()
+    if (!ssid) { console.log('Not connected'); return }
+    const password = findPassword(ssid)
+    const escape = (s) => s.replace(/([\\;,"])/g, '\\$1')
+    const uri = password
+      ? `WIFI:T:WPA;S:${escape(ssid)};P:${escape(password)};;`
+      : `WIFI:T:nopass;S:${escape(ssid)};;`
+    console.log(`\n  ${'Network:'.yellow} ${ssid}`)
+    if (password) console.log(`  ${'Password:'.yellow} ${password}\n`)
+    qrcode.generate(uri, { small: true })
+  })
 
 program
   .command('dns [servers...]')

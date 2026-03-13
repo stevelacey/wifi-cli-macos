@@ -26,7 +26,8 @@
     "@clack/prompts": "^1.1.0",
     "colors": "^1.1.2",
     "commander": "^14.0.3",
-    "node-wifi": "^2.0.16"
+    "node-wifi": "^2.0.16",
+    "qrcode-terminal": "^0.12.0"
   },
   "main": "index.js",
   "os": [
