@@ -1,11 +1,15 @@
 import Cocoa
 import CoreWLAN
 import CoreLocation
+import CoreBluetooth
+import SecurityFoundation
 
-class App: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
+class App: NSObject, NSApplicationDelegate, CLLocationManagerDelegate, CBCentralManagerDelegate {
     let lm = CLLocationManager()
     let cmd = CommandLine.arguments.dropFirst().first ?? "scan"
     var done = false
+    var central: CBCentralManager?
+    var hotspots: [String: Int] = [:]
 
     func applicationDidFinishLaunching(_ n: Notification) {
         lm.delegate = self
@@ -26,15 +30,50 @@ class App: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
         done = true
         let ok = s == .authorized || s == .authorizedAlways
         switch cmd {
+
         case "check":
             print(ok ? "granted" : "denied")
             fflush(stdout)
             exit(0)
+
         case "current":
             guard ok else { exit(1) }
             if let ssid = CWWiFiClient.shared().interface()?.ssid() { print(ssid) }
             fflush(stdout)
             exit(0)
+
+        case "connect":
+            guard ok else { fputs("error: Location permission denied\n", stderr); exit(1) }
+            guard let iface = CWWiFiClient.shared().interface() else { exit(1) }
+            let args = CommandLine.arguments
+            guard args.count >= 3 else { exit(1) }
+            let ssid = args[2]
+            let password: String? = args.count >= 4 ? args[3] : nil
+            var network: CWNetwork?
+            if let fresh = try? iface.scanForNetworks(withSSID: nil) { network = fresh.first { $0.ssid == ssid } }
+            if network == nil, let cached = iface.cachedScanResults() { network = cached.first { $0.ssid == ssid } }
+            guard let net = network else { exit(1) }
+            do { try iface.associate(to: net, password: password); fflush(stdout); exit(0) }
+            catch { exit(1) }
+
+        case "disconnect":
+            guard let iface = CWWiFiClient.shared().interface() else { exit(1) }
+            iface.disassociate()
+            fflush(stdout); exit(0)
+
+        case "forget":
+            let args = CommandLine.arguments
+            guard args.count >= 3 else { fputs("error: No SSID provided\n", stderr); exit(1) }
+            let ssid = args[2]
+            guard let iface = CWWiFiClient.shared().interface() else { exit(1) }
+            if iface.ssid() == ssid { iface.disassociate() }
+            guard let config = iface.configuration() else { exit(1) }
+            let mutableConfig = CWMutableConfiguration(configuration: config)
+            let profiles = (mutableConfig.networkProfiles.array as! [CWNetworkProfile]).filter { $0.ssid != ssid }
+            mutableConfig.networkProfiles = NSOrderedSet(array: profiles)
+            do { try iface.commitConfiguration(mutableConfig, authorization: SFAuthorization()); fflush(stdout); exit(0) }
+            catch { fputs("error: \(error.localizedDescription)\n", stderr); exit(1) }
+
         case "scan":
             guard ok else { fputs("error: Location permission denied\n", stderr); exit(1) }
             guard let iface = CWWiFiClient.shared().interface() else { exit(1) }
@@ -79,16 +118,37 @@ class App: NSObject, NSApplicationDelegate, CLLocationManagerDelegate {
                 if !bandStr.isEmpty { entry["band"] = bandStr + "GHz" }
                 return entry
             }.sorted { ($0["rssi"] as! Int) > ($1["rssi"] as! Int) }
-            if let json = try? JSONSerialization.data(withJSONObject: ["current": current, "networks": networks]) {
-                print(String(data: json, encoding: .utf8)!)
+            central = CBCentralManager(delegate: self, queue: nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                let hotspotList = self.hotspots
+                    .sorted { $0.value > $1.value }
+                    .map { ["ssid": $0.key, "rssi": $0.value] as [String: Any] }
+                if let json = try? JSONSerialization.data(withJSONObject: ["current": current, "networks": networks, "hotspots": hotspotList]) {
+                    print(String(data: json, encoding: .utf8)!)
+                }
+                fflush(stdout)
+                exit(0)
             }
-            fflush(stdout)
-            exit(0)
+
         default: // request-permission
             if ok { print("granted"); fflush(stdout); exit(0) }
             fputs("denied: enable wifi-scanner in System Settings → Privacy & Security → Location Services\n", stderr)
             exit(1)
         }
+    }
+
+    func centralManagerDidUpdateState(_ c: CBCentralManager) {
+        guard c.state == .poweredOn else { return }
+        c.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
+    }
+
+    func centralManager(_ c: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        guard let name = peripheral.name, !name.isEmpty,
+              let mfr = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
+              mfr.count >= 3, mfr[0] == 0x4C, mfr[1] == 0x00 else { return }
+        let type = mfr[2]
+        guard type == 0x0E || type == 0x10 else { return }
+        hotspots[name] = max(hotspots[name] ?? Int.min, RSSI.intValue)
     }
 }
 

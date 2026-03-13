@@ -1,176 +1,187 @@
 #!/usr/bin/env node
-const name = 'Wi-Fi CLI MacOS'
-const colors = require('colors')
-const path = require('path')
-const { execSync, spawnSync } = require('child_process')
-const { intro, isCancel, select, password: promptPassword } = require('@clack/prompts')
-const { program } = require('commander')
-const qrcode = require('qrcode-terminal')
-const { version } = require('./package.json')
-const title = `${name.white} ${('v' + version).green}`
-const bars = '▁▂▃▄▅▆▇'
-const exec = (cmd) => execSync(cmd).toString().trim()
-const iface = exec("networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}'") || 'en0'
-const scanner = path.join(__dirname, 'build/wifi-scanner.app/Contents/MacOS/wifi-scanner')
-const scannerReady = () => { try { exec(`test -x "${scanner}"`); return true } catch { return false } }
-const connect = (network, password) => spawnSync('networksetup', ['-setairportnetwork', iface, network, password].filter(Boolean), { stdio: 'inherit' })
-const currentNetwork = () => { if (!ensureScanner()) return ''; try { return execSync(`"${scanner}" current`, { timeout: 5000 }).toString().trim() } catch { return '' } }
+import 'colors'
+import { connect, current, disconnect, ensure, forget, scan } from './scanner.js'
+import { dnsPresets, name, version } from './settings.js'
+import { execSync } from './support.js'
+import { formatHelp, formatLabel, print, renderBars, renderNetwork, renderQr, subcommandTerm, table, withDefault } from './renderers.js'
+import { getDhcpDns, getDhcpRouter, getDns, getIp, getMac, getRouter, hardwareMac, iface, isDhcp, isPrivateRelay, off, on, randomMac, restart, setDns, setIp, setMac, setRouter } from './network.js'
+import { intro, isCancel, password, select, spinner } from '@clack/prompts'
+import { program } from 'commander'
+
+const connectNetwork = (ssid, pass, { message, retry, withGuide = true } = {}) => new Promise((resolve) => {
+  const s = spinner({ withGuide })
+  s.start(message || `Connecting to ${ssid}`)
+  const attempt = () => {
+    connect(ssid, pass).on('close', (code) => {
+      if (code === 0) { s.stop(`Connected to ${ssid}`); resolve() }
+      else if (retry) setTimeout(attempt, 2000)
+      else { s.stop(`Failed to connect to ${ssid}`); resolve() }
+    })
+  }
+  attempt()
+})
+
+const currentNetwork = () => { if (!ensure()) return ''; return current() }
+
+const disconnectNetwork = () => { if (ensure()) disconnect() }
+
 const findPassword = (ssid) => { try { return execSync(`security find-generic-password -ga "${ssid}" -w 2>/dev/null`).toString().trim() } catch { return '' } }
-const disconnect = () => {
-  const n = currentNetwork()
-  if (!n) return
-  spawnSync('networksetup', ['-removepreferredwirelessnetwork', iface, n], { stdio: 'inherit' })
-  restart()
-}
-const dnsPresets = {
-  cloudflare: ['1.1.1.1', '1.0.0.1'],
-  google: ['8.8.8.8', '8.8.4.4'],
-  opendns: ['208.67.222.222', '208.67.220.220'],
-  quad9: ['9.9.9.9', '149.112.112.112'],
-}
-const dnsPresetsDescription = (() => {
-  const entries = Object.entries(dnsPresets)
-  const maxLen = Math.max(...entries.map(([k]) => k.length))
-  const lines = entries.map(([k, v]) => `  ${(k + ':').padEnd(maxLen + 1).green}  ${v.join(' ').white}`).join('\n')
-  return `Display or set DNS servers\n\n${'Presets:'.yellow}\n${lines}`
-})()
+
+const forgetNetwork = (ssid) => { if (ensure()) forget(ssid) }
+
 const getDnsServers = () => {
-  const raw = exec('networksetup -getdnsservers Wi-Fi')
-  const current = raw.startsWith("There aren't") ? 'auto' : raw.split('\n').join(' ')
+  const custom = getDns()
+  const dhcp = getDhcpDns()
   const entries = Object.entries(dnsPresets)
   const maxLen = Math.max(...entries.map(([k]) => k.length))
   const presetLines = entries
     .map(([k, v]) => `  ${(k + ':').padEnd(maxLen + 1).green}  ${v.join(' ').white}`)
     .join('\n')
-  console.log(`${'Current:'.yellow} ${current.white}\n\n${'Presets:'.yellow}\n${presetLines}`)
+  print([
+    table({ current: custom || dhcp, default: dhcp }),
+    `${'Presets:'.yellow}\n${presetLines}`,
+  ].join('\n'))
 }
-const setDnsServers = (servers) => {
-  exec(`networksetup -setdnsservers Wi-Fi ${servers.join(' ')}`)
-  console.log(exec('networksetup -getdnsservers Wi-Fi').split('\n').join(' '))
-}
-const ensureScanner = () => {
-  if (!scannerReady()) {
-    try { exec('xcode-select -p') } catch {
-      console.error('Xcode Command Line Tools required. Install with: xcode-select --install')
-      return false
-    }
-    exec(`"${path.join(__dirname, 'build-scanner')}"`)
-  }
-  const granted = (() => { try { return execSync(`"${scanner}" check`, { timeout: 5000 }).toString().trim() === 'granted' } catch { return false } })()
-  if (!granted) {
-    try { execSync(`"${scanner}" request-permission`, { timeout: 30000 }) } catch {
-      console.error('Location permission denied. Enable wifi-scanner in System Settings → Privacy & Security → Location Services')
-      return false
-    }
-  }
-  return true
-}
+
 const getNetworks = () => {
-  if (!ensureScanner()) return null
-  const raw = JSON.parse(execSync(`"${scanner}" scan`, { timeout: 15000 }).toString().trim())
-  const networks = (raw.networks || []).sort((a, b) => b.rssi - a.rssi)
-  const current = raw.current || currentNetwork()
-  return { networks, current }
+  if (!ensure()) return
+  return new Promise((resolve) => {
+    scan((err, stdout) => {
+      if (err) { resolve(null); return }
+      const raw = JSON.parse(stdout.trim())
+      const networks = (raw.networks || []).sort((a, b) => b.rssi - a.rssi)
+      const current = raw.current || currentNetwork()
+      const seen = new Set(networks.map(n => n.ssid))
+      for (const h of (raw.hotspots || [])) {
+        if (!seen.has(h.ssid)) networks.push({ ...h, band: 'BLE', security: 'WPA2/3', hotspot: true })
+      }
+      networks.sort((a, b) => b.rssi - a.rssi)
+      resolve({ networks, current })
+    })
+  })
 }
-const listNetworks = () => {
-  const result = getNetworks()
+
+const listNetworks = async () => {
+  const result = await getNetworks()
   if (!result) return
   const { networks, current } = result
-  if (networks.length === 0) { console.log('No networks found'); return }
-  const label = renderNetworks(networks)
-  console.log(networks.map(n => label(n) + (n.ssid === current ? ' ◀'.green : '')).join('\n'))
+  if (networks.length === 0) { print('No networks found'); return }
+  print(networks.map(n => renderNetwork(n, networks) + (n.ssid === current ? ' ◀'.green : '')).join('\n'))
 }
-const on = () => exec(`networksetup -setairportpower ${iface} on`) || true
-const off = () => exec(`networksetup -setairportpower ${iface} off`) || true
-const restart = () => off() && on()
-const renderSignal = (rssi) => {
-  const n = rssi > -30 ? 7 : rssi > -67 ? 6 : rssi > -70 ? 4 : rssi > -80 ? 2 : rssi > -90 ? 1 : 0
-  const color = rssi > -67 ? 'green' : rssi > -70 ? 'yellow' : 'red'
-  const filled = bars.slice(0, n)
-  const empty = bars.slice(n)
-  return { signal: process.stdout.isTTY ? filled[color] + empty.dim.grey : filled.padEnd(bars.length), color }
-}
-const renderNetworks = (networks) => {
-  const max = networks.reduce((a, b) => a.ssid.length > b.ssid.length ? a : b).ssid.length
-  return ({ ssid, rssi, security, band }) => {
-    const { signal, color } = renderSignal(rssi)
-    const details = `${(band || '').padEnd(9)} ${(security || '').padEnd(6)}`
-    return `${ssid.padEnd(max)[color]}  ${signal}  ${details.grey}`
-  }
-}
-const selectNetwork = async () => {
-  const result = getNetworks()
+
+const selectNetwork = async (prefetched) => {
+  const result = prefetched || await getNetworks()
   if (!result) return
   const { networks, current } = result
-  if (networks.length === 0) { console.log('No networks found'); return }
-  const label = renderNetworks(networks)
-  intro(title)
+  if (networks.length === 0) { print('No networks found'); return }
+  intro(name)
   const ssid = await select({
     message: 'Select a network to join',
     initialValue: current,
     maxItems: networks.length,
-    options: networks.map(n => ({ label: '\x1b[0m' + label(n), value: n.ssid })),
+    options: networks.map(n => ({ label: '\x1b[0m' + renderNetwork(n, networks), value: n.ssid })),
   })
   if (isCancel(ssid) || ssid === current) return
   const network = networks.find(n => n.ssid === ssid)
-  let password = ''
+  let pass = ''
   if (network && network.security) {
-    const input = await promptPassword({ message: 'Password (leave blank to use keychain)' })
+    const input = await password({ message: 'Password (leave blank to use keychain)' })
     if (isCancel(input)) return
     if (input) {
-      password = input
+      pass = input
     } else {
-      password = findPassword(ssid)
-      if (password) process.stdout.write(`\x1b[1A\x1b[2K\r│  ${'▪'.repeat(password.length)}\n`.grey)
+      pass = findPassword(ssid)
+      if (pass) process.stdout.write(`\x1b[1A\x1b[2K\r│  ${'▪'.repeat(pass.length)}\n`.grey)
     }
   }
-  connect(ssid, password)
+  if (network && network.hotspot) {
+    await connectNetwork(ssid, pass, { message: `Enable Personal Hotspot on your iPhone`, retry: true })
+  } else {
+    await connectNetwork(ssid, pass)
+  }
+}
+
+const setDnsServers = (servers) => {
+  setDns(servers)
+  print(getDns())
 }
 
 program
   .name('wifi')
   .addHelpCommand(false)
-  .configureHelp({
-    formatHelp: (cmd, helper) => {
-      if (cmd.parent) {
-        const opts = helper.visibleOptions(cmd)
-        const optLines = opts.map(o => `  ${o.flags.green}  ${o.description.white}`).join('\n')
-        const desc = cmd.description()
-        return [
-          `${'Usage:'.yellow} wifi ${cmd.name()} ${cmd.usage().cyan}`,
-          '',
-          ...(desc ? [desc.white, ''] : []),
-          'Options:'.yellow,
-          optLines,
-          '',
-        ].join('\n')
-      }
-      const cmds = helper.visibleCommands(cmd).sort((a, b) => a.name().localeCompare(b.name()))
-      const termWidth = cmds.reduce((max, c) => Math.max(max, colors.strip(helper.subcommandTerm(c)).length), 0)
-      const cmdLines = cmds.map(c => {
-        const term = helper.subcommandTerm(c)
-        const gap = ' '.repeat(termWidth - colors.strip(term).length + 2)
-        return `  ${term}${gap}${helper.subcommandDescription(c).white}`
-      }).join('\n')
-      return [
-        title,
-        '',
-        'Usage:'.yellow,
-        `  wifi ${'[command]'.white}`,
-        '',
-        'Commands:'.yellow,
-        cmdLines,
-        '',
-      ].join('\n')
-    },
-    subcommandTerm: (cmd) => {
-      const alias = cmd.alias()
-      const args = cmd.registeredArguments.map(a => a.required ? `<${a.name()}${a.variadic ? '...' : ''}>` : `[${a.name()}${a.variadic ? '...' : ''}]`).join(' ')
-      const cmdName = alias ? `${cmd.name().green} ${('(' + alias + ')').grey}` : cmd.name().green
-      return args ? `${cmdName} ${args.cyan}` : cmdName
-    },
-  })
+  .configureHelp({ formatHelp, subcommandTerm })
   .version(version, '-v, --version')
+
+program
+  .command('connect [network] [password]')
+  .alias('c')
+  .summary('Connect to a Wi-Fi network')
+  .action(async (network, pass) => {
+    if (!network) return selectNetwork()
+    const result = await getNetworks()
+    const isHotspot = result?.networks.find(n => n.ssid === network)?.hotspot
+    await connectNetwork(network, pass || findPassword(network), { message: isHotspot ? `Enable Personal Hotspot on your iPhone` : undefined, retry: isHotspot, withGuide: false })
+  })
+
+program
+  .command('disconnect')
+  .alias('dc')
+  .summary('Disconnect from current Wi-Fi network')
+  .action(disconnectNetwork)
+
+program
+  .command('dns [servers...]')
+  .summary('Display or set DNS servers')
+  .description((() => {
+    const entries = Object.entries(dnsPresets)
+    const maxLen = Math.max(...entries.map(([k]) => k.length))
+    const lines = entries.map(([k, v]) => `  ${(k + ':').padEnd(maxLen + 1).green}  ${v.join(' ').white}`).join('\n')
+    return `Display or set DNS servers\n\n${'Presets:'.yellow}\n${lines}`
+  })())
+  .action((servers) => {
+    if (!servers.length) return getDnsServers()
+    if (servers.length === 1 && dnsPresets[servers[0]]) return setDnsServers(dnsPresets[servers[0]])
+    setDnsServers(servers)
+  })
+
+program
+  .command('forget [network]')
+  .alias('f')
+  .summary('Forget a Wi-Fi network')
+  .action((network) => {
+    const ssid = network || currentNetwork()
+    if (!ssid) { print('Not connected'); return }
+    forgetNetwork(ssid)
+  })
+
+program
+  .command('info')
+  .alias('i')
+  .summary('Display current Wi-Fi connection details')
+  .action(() => {
+    const network = currentNetwork()
+    if (!network) { print('Not connected'); return }
+    const dhcp = getDhcpDns()
+    const dns = getDns()
+    const ip = getIp()
+    const mac = getMac()
+    const router = getRouter()
+    print(table({
+      network,
+      ip: ip && (ip + (isDhcp() ? ' (dhcp)' : ' (manual)').grey),
+      router,
+      dns: withDefault(dns || dhcp, dhcp),
+      mac: withDefault(mac, hardwareMac),
+    }))
+  })
+
+program
+  .command('ip [address]')
+  .summary('Display or set IP address')
+  .action(async (address) => {
+    if (!address) return print(getIp())
+    print(await setIp(address))
+  })
 
 program
   .command('list')
@@ -179,45 +190,13 @@ program
   .action(listNetworks)
 
 program
-  .command('connect [network] [password]')
-  .alias('c')
-  .summary('Connect to a Wi-Fi network')
-  .action((network, password) => network ? connect(network, password || findPassword(network)) : selectNetwork())
-
-program
-  .command('disconnect')
-  .alias('dc')
-  .summary('Disconnect from current Wi-Fi network')
-  .action(disconnect)
-
-program
-  .command('info')
-  .alias('i')
-  .summary('Display current Wi-Fi connection details')
-  .action(() => {
-    const n = currentNetwork()
-    if (!n) { console.log('Not connected'); return }
-    const tryExec = (cmd) => { try { return exec(cmd) } catch { return '' } }
-    const ip = tryExec(`ipconfig getifaddr ${iface}`)
-    const router = tryExec(`route -n get default | awk '/gateway/{print $2}'`)
-    const dnsRaw = tryExec(`networksetup -getdnsservers Wi-Fi`)
-    const dns = dnsRaw.startsWith("There aren't any DNS Servers") ? 'auto' : dnsRaw.split('\n').join(' ')
-    const mac = tryExec(`ifconfig ${iface} | awk '/ether/{print $2}'`)
-    const row = (label, value) => value ? `${label.yellow}  ${value}` : ''
-    console.log([
-      row('Network', n),
-      row('IP     ', ip),
-      row('Router ', router),
-      row('DNS    ', dns),
-      row('MAC    ', mac),
-    ].filter(Boolean).join('\n'))
+  .command('mac [address]')
+  .summary('Display or set MAC address')
+  .action((address) => {
+    if (!address) return print(table({ current: getMac(), default: hardwareMac }))
+    if (isPrivateRelay()) { print('Disable Private Relay before changing MAC address'); return }
+    print(setMac(address))
   })
-
-program
-  .command('password')
-  .alias('p')
-  .summary('Display current Wi-Fi network password')
-  .action(() => console.log(findPassword(currentNetwork())))
 
 program
   .command('on')
@@ -230,36 +209,55 @@ program
   .action(off)
 
 program
+  .command('password')
+  .alias('p')
+  .summary('Display current Wi-Fi network password')
+  .action(() => print(findPassword(currentNetwork())))
+
+program
+  .command('qr')
+  .summary('Display a QR code to join the network')
+  .action(() => {
+    const ssid = currentNetwork()
+    if (!ssid) { print('Not connected'); return }
+    const pass = findPassword(ssid)
+    print(`${'Network:'.yellow} ${ssid}`)
+    if (pass) print(`${'Password:'.yellow} ${pass}`)
+    print(renderQr(ssid, pass))
+  })
+
+program
+  .command('reset [target]')
+  .summary('Reset DNS, IP, MAC, router to defaults')
+  .action(async (target) => {
+    print(table({
+      ip: target === 'ip' || !target ? await setIp('auto') : null,
+      dns: target === 'dns' || !target ? setDns(['empty']) || getDhcpDns() : null,
+      router: target === 'router' || !target ? await setRouter(getDhcpRouter()) : null,
+      mac: target === 'mac' || !target ? setMac('auto') : null,
+    }))
+  })
+
+program
   .command('restart')
   .alias('r')
   .summary('Turn Wi-Fi off and on again')
   .action(restart)
 
 program
-  .command('qr')
-  .summary('Display a QR code to join the current Wi-Fi network')
-  .action(() => {
-    const ssid = currentNetwork()
-    if (!ssid) { console.log('Not connected'); return }
-    const password = findPassword(ssid)
-    const escape = (s) => s.replace(/([\\;,"])/g, '\\$1')
-    const uri = password
-      ? `WIFI:T:WPA;S:${escape(ssid)};P:${escape(password)};;`
-      : `WIFI:T:nopass;S:${escape(ssid)};;`
-    console.log(`\n  ${'Network:'.yellow} ${ssid}`)
-    if (password) console.log(`  ${'Password:'.yellow} ${password}\n`)
-    qrcode.generate(uri, { small: true })
+  .command('router [address]')
+  .summary('Display or set router address')
+  .action(async (address) => {
+    if (!address) return print(getRouter())
+    print(await setRouter(address))
   })
 
 program
-  .command('dns [servers...]')
-  .summary('Display or set DNS servers (auto to reset)')
-  .description(dnsPresetsDescription)
-  .action((servers) => {
-    if (!servers.length) return getDnsServers()
-    if (servers.length === 1 && servers[0] === 'auto') return setDnsServers(['empty'])
-    if (servers.length === 1 && dnsPresets[servers[0]]) return setDnsServers(dnsPresets[servers[0]])
-    setDnsServers(servers)
+  .command('spoof')
+  .summary('Randomize MAC address')
+  .action(() => {
+    if (isPrivateRelay()) { print('Disable Private Relay before spoofing MAC address'); return }
+    print(setMac(randomMac()))
   })
 
 program.parse(process.argv)
