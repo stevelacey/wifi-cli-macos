@@ -2,6 +2,8 @@
 
 Wi-Fi CLI MacOS is a command line utility for managing network connections on MacOS.
 
+![Screenshot](screenshot.png)
+
 ## Features
 
 - 📡 Scan and connect to nearby Wi-Fi networks
@@ -36,8 +38,7 @@ wifi spoof                             # Randomize MAC address
 ## Installation
 
 ```sh
-brew tap stevelacey/tap
-brew install wifi-cli
+brew install stevelacey/tap/wifi-cli
 ```
 
 Or via npm:
