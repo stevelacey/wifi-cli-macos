@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  npm-publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - run: npm publish
+
+  tap-publish:
+    name: Publish to tap
+    runs-on: ubuntu-latest
+    needs: npm-publish
+    steps:
+      - name: Compute release info
+        id: release
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "url=https://registry.npmjs.org/wifi-cli-macos/-/wifi-cli-macos-${version}.tgz" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger homebrew-tap update
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          repository: stevelacey/homebrew-tap
+          event-type: update-formula
+          client-payload: >-
+            {
+              "formula": "wifi-cli",
+              "url": "${{ steps.release.outputs.url }}",
+              "version": "${{ steps.release.outputs.version }}"
+            }
