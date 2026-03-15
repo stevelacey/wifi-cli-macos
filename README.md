@@ -12,6 +12,7 @@ Wi-Fi CLI MacOS is a command line utility for managing network connections on Ma
 - 🌐 Configure DNS, IP, MAC, and router addresses
 - 🔁 Built-in DNS presets (Cloudflare, Google, OpenDNS, Quad9)
 - 📷 Generate QR codes to share your Wi-Fi
+- 🚀 Run speed tests against Apple servers
 - 🎭 Spoof your MAC address
 
 ## Commands
@@ -34,6 +35,7 @@ wifi restart (r)                       # Turn Wi-Fi off and on again
 wifi router [address]                  # Display or set router address
 wifi saved (s)                         # List saved Wi-Fi networks
 wifi spoof                             # Randomize MAC address
+wifi test (t)                          # Test network upload/download speed
 ```
 
 ## Installation
@@ -122,4 +124,11 @@ wifi qr
 Network:  Network 1
 Password: hunter2
 [QR code]
+```
+
+### Speed test
+
+```sh
+wifi test
+156.1 Mbps ↓ / 45.2 Mbps ↑ (12 ms)
 ```

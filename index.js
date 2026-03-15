@@ -2,7 +2,7 @@
 import 'colors'
 import { connect, current, disconnect, ensure, forget, scan } from './scanner.js'
 import { dnsPresets, name, version } from './settings.js'
-import { execSync } from './support.js'
+import { execSync, spawn } from './support.js'
 import { formatHelp, formatLabel, print, renderBars, renderNetwork, renderQr, subcommandTerm, table, withDefault } from './renderers.js'
 import { getDhcpDns, getDhcpRouter, getDns, getIp, getMac, getRouter, getSavedNetworks, hardwareMac, iface, isDhcp, isPrivateRelay, off, on, randomMac, restart, setDns, setIp, setMac, setRouter } from './network.js'
 import { isCancel, multiselect, password, select, spinner } from './prompts.js'
@@ -275,5 +275,31 @@ program
     if (isPrivateRelay()) { print('Disable Private Relay before spoofing MAC address'); return }
     print(setMac(randomMac()))
   })
+
+program
+  .command('test')
+  .alias('t')
+  .summary('Test network upload/download speed')
+  .action(() => new Promise((resolve) => {
+    const s = spinner({ withGuide: false })
+    s.start('Testing network speed')
+    let output = ''
+    const proc = spawn('networkQuality', ['-c'])
+    proc.stdout.on('data', d => output += d)
+    proc.on('close', (code) => {
+      if (code !== 0) { s.stop('Speed test failed'); resolve(); return }
+      try {
+        const { dl_throughput, ul_throughput, base_rtt } = JSON.parse(output)
+        const mbps = (bps) => `${(bps / 1e6).toFixed(1)} Mbps`
+        const dl = `${mbps(dl_throughput).green} ${'↓'.green}`
+        const ul = `${mbps(ul_throughput).cyan} ${'↑'.cyan}`
+        const lat = base_rtt ? ` ${'('.grey}${`${Math.round(base_rtt)} ms`.grey}${')'.grey}` : ''
+        s.stop()
+        process.stdout.write('\x1b[1A\x1b[2K')
+        print(`${dl} ${'/'.grey} ${ul}${lat}`)
+      } catch { s.stop('Speed test failed') }
+      resolve()
+    })
+  }))
 
 program.parse(process.argv)
