@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import 'colors'
-import { program } from 'commander'
-import { getDhcpDns, getDhcpRouter, getDns, getIp, getMac, getRouter, getSavedNetworks, hardwareMac, iface, isDhcp, isPrivateRelay, off, on, randomMac, restart, setDns, setIp, setMac, setRouter } from './network.js'
-import { isCancel, multiselect, password, select, spinner } from './prompts.js'
-import { formatHelp, formatLabel, print, renderBars, renderNetwork, renderQr, subcommandTerm, table, withDefault } from './renderers.js'
 import { connect, current, disconnect, ensure, forget, scan } from './scanner.js'
 import { dnsPresets, name, version } from './settings.js'
 import { execSync } from './support.js'
+import { formatHelp, formatLabel, print, renderBars, renderNetwork, renderQr, subcommandTerm, table, withDefault } from './renderers.js'
+import { getDhcpDns, getDhcpRouter, getDns, getIp, getMac, getRouter, getSavedNetworks, hardwareMac, iface, isDhcp, isPrivateRelay, off, on, randomMac, restart, setDns, setIp, setMac, setRouter } from './network.js'
+import { isCancel, multiselect, password, select, spinner } from './prompts.js'
+import { program } from 'commander'
 
 const connectNetwork = (ssid, pass, { message, retry, withGuide = true } = {}) => new Promise((resolve) => {
   const s = spinner({ withGuide })
