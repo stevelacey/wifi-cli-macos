@@ -209,10 +209,10 @@ program
   .action(off)
 
 program
-  .command('password')
+  .command('password [network]')
   .alias('p')
-  .summary('Display current Wi-Fi network password')
-  .action(() => print(findPassword(currentNetwork())))
+  .summary('Display Wi-Fi network password')
+  .action((network) => print(findPassword(network || currentNetwork())))
 
 program
   .command('qr')

@@ -27,7 +27,7 @@ wifi list (ls)                         # List nearby Wi-Fi networks
 wifi mac [address]                     # Display or set MAC address
 wifi on                                # Turn Wi-Fi on
 wifi off                               # Turn Wi-Fi off
-wifi password (p)                      # Display current Wi-Fi network password
+wifi password (p) [network]            # Display Wi-Fi network password
 wifi qr                                # Display a QR code to join the network
 wifi reset [target]                    # Reset DNS, IP, MAC, router to defaults
 wifi restart (r)                       # Turn Wi-Fi off and on again
