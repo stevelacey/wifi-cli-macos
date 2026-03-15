@@ -4,7 +4,7 @@ import { connect, current, disconnect, ensure, forget, scan } from './scanner.js
 import { dnsPresets, name, version } from './settings.js'
 import { execSync } from './support.js'
 import { formatHelp, formatLabel, print, renderBars, renderNetwork, renderQr, subcommandTerm, table, withDefault } from './renderers.js'
-import { getDhcpDns, getDhcpRouter, getDns, getIp, getMac, getRouter, hardwareMac, iface, isDhcp, isPrivateRelay, off, on, randomMac, restart, setDns, setIp, setMac, setRouter } from './network.js'
+import { getDhcpDns, getDhcpRouter, getDns, getIp, getMac, getRouter, getSavedNetworks, hardwareMac, iface, isDhcp, isPrivateRelay, off, on, randomMac, restart, setDns, setIp, setMac, setRouter } from './network.js'
 import { intro, isCancel, password, select, spinner } from '@clack/prompts'
 import { program } from 'commander'
 
@@ -250,6 +250,17 @@ program
   .action(async (address) => {
     if (!address) return print(getRouter())
     print(await setRouter(address))
+  })
+
+program
+  .command('saved')
+  .alias('s')
+  .summary('List saved Wi-Fi networks')
+  .action(() => {
+    const networks = getSavedNetworks()
+    const current = currentNetwork()
+    if (networks.length === 0) { print('No saved networks'); return }
+    print(networks.map(ssid => ssid + (ssid === current ? ' ◀'.green : '')).join('\n'))
   })
 
 program

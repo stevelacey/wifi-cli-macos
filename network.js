@@ -25,6 +25,11 @@ export const getMac = () => tryRun(`ifconfig ${iface} | awk '/ether/{print $2}'`
 
 export const getRouter = () => tryRun(`route -n get default | awk '/gateway/{print $2}'`) || tryRun(`networksetup -getinfo Wi-Fi | awk -F': ' '/^Router/{print $2}'`) || getDhcpRouter()
 
+export const getSavedNetworks = () => {
+  const raw = tryRun(`networksetup -listpreferredwirelessnetworks ${iface}`)
+  return raw.split('\n').slice(1).map(s => s.trim()).filter(Boolean)
+}
+
 export const hardwareMac = (() => {
   const raw = tryRun('networksetup -listallhardwareports')
   const match = raw.match(/Wi-Fi\nDevice: \S+\nEthernet Address: ([0-9a-f:]+)/i)

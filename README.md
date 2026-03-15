@@ -8,7 +8,7 @@ Wi-Fi CLI MacOS is a command line utility for managing network connections on Ma
 
 - 📡 Scan and connect to nearby Wi-Fi networks
 - 📱 Detect nearby iPhone hotspots via BLE
-- 🔒 Retrieve saved passwords from keychain automatically
+- 🔒 Manage your saved networks and retrieve passwords from keychain
 - 🌐 Configure DNS, IP, MAC, and router addresses
 - 🔁 Built-in DNS presets (Cloudflare, Google, OpenDNS, Quad9)
 - 📷 Generate QR codes to share your Wi-Fi
@@ -32,6 +32,7 @@ wifi qr                                # Display a QR code to join the network
 wifi reset [target]                    # Reset DNS, IP, MAC, router to defaults
 wifi restart (r)                       # Turn Wi-Fi off and on again
 wifi router [address]                  # Display or set router address
+wifi saved (s)                         # List saved Wi-Fi networks
 wifi spoof                             # Randomize MAC address
 ```
 
