@@ -13,9 +13,9 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -35,7 +35,7 @@ jobs:
           echo "url=https://registry.npmjs.org/wifi-cli-macos/-/wifi-cli-macos-${version}.tgz" >> "$GITHUB_OUTPUT"
 
       - name: Trigger homebrew-tap update
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           repository: stevelacey/homebrew-tap
