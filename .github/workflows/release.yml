@@ -20,6 +20,8 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
+      - run: npm ci --force
+      - run: npm test
       - run: npm publish
 
   tap-publish:

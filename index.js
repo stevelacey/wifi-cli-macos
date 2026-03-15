@@ -53,6 +53,7 @@ const getNetworks = () => {
       const current = raw.current || currentNetwork()
       const seen = new Set(networks.map(n => n.ssid))
       for (const h of (raw.hotspots || [])) {
+        /* v8 ignore next */
         if (!seen.has(h.ssid)) networks.push({ ...h, band: 'BLE', security: 'WPA2/3', hotspot: true })
       }
       networks.sort((a, b) => b.rssi - a.rssi)
@@ -89,6 +90,7 @@ const selectNetwork = async (prefetched) => {
       pass = input
     } else {
       pass = findPassword(ssid)
+      /* v8 ignore next */
       if (pass) process.stdout.write(`\x1b[1A\x1b[2K\r│  ${'▪'.repeat(pass.length)}\n`.grey)
     }
   }

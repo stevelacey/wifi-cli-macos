@@ -28,6 +28,10 @@
     "commander": "^14.0.3",
     "qrcode-terminal": "^0.12.0"
   },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.0",
+    "vitest": "^4.1.0"
+  },
   "main": "index.js",
   "type": "module",
   "os": [
@@ -37,5 +41,8 @@
   "repository": {
     "type": "git",
     "url": "git://github.com/stevelacey/wifi-cli-macos.git"
+  },
+  "scripts": {
+    "test": "vitest run"
   }
 }

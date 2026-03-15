@@ -42,7 +42,7 @@ export const formatLabel = (k) => {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-export const print = (...args) => console.log(...args.map(a => typeof a === 'string' && !process.stdout.isTTY ? colors.strip(a) : a))
+export const print = (...args) => console.log(...args.map(a => typeof a === 'string' && !process.stdout.isTTY ? colors.strip(a) : /* v8 ignore next */ a))
 
 export const renderBars = (rssi) => {
   const bars = '▁▂▃▄▅▆▇'
@@ -50,6 +50,7 @@ export const renderBars = (rssi) => {
   const color = rssi > -67 ? 'green' : rssi > -70 ? 'yellow' : 'red'
   const filled = bars.slice(0, n)
   const empty = bars.slice(n)
+  /* v8 ignore next */
   return { signal: process.stdout.isTTY ? filled[color] + empty.dim.grey : filled.padEnd(bars.length), color }
 }
 
@@ -58,6 +59,7 @@ export const renderNetwork = ({ ssid, rssi, security, band }, networks) => {
   const { signal, color } = renderBars(rssi)
   const details = `${(band || '').padEnd(9)} ${(security || '').padEnd(6)}`
   const result = `${ssid.padEnd(max)[color]}  ${signal}  ${details.grey}`
+  /* v8 ignore next */
   return process.stdout.isTTY ? result : colors.strip(result)
 }
 

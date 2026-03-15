@@ -1,5 +1,6 @@
 import { run, tryRun, waitFor } from './support.js'
 
+/* v8 ignore next */
 export const iface = run("networksetup -listallhardwareports | awk '/Wi-Fi/{getline; print $2}'") || 'en0'
 
 export const getDhcpDns = () => {

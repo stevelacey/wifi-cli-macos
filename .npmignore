@@ -1,1 +1,4 @@
+coverage/
 screenshot.png
+tests/
+vitest.config.*
