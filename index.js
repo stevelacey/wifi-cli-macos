@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import 'colors'
+import { program } from 'commander'
+import { getDhcpDns, getDhcpRouter, getDns, getIp, getMac, getRouter, getSavedNetworks, hardwareMac, iface, isDhcp, isPrivateRelay, off, on, randomMac, restart, setDns, setIp, setMac, setRouter } from './network.js'
+import { isCancel, multiselect, password, select, spinner } from './prompts.js'
+import { formatHelp, formatLabel, print, renderBars, renderNetwork, renderQr, subcommandTerm, table, withDefault } from './renderers.js'
 import { connect, current, disconnect, ensure, forget, scan } from './scanner.js'
 import { dnsPresets, name, version } from './settings.js'
 import { execSync } from './support.js'
-import { formatHelp, formatLabel, print, renderBars, renderNetwork, renderQr, subcommandTerm, table, withDefault } from './renderers.js'
-import { getDhcpDns, getDhcpRouter, getDns, getIp, getMac, getRouter, getSavedNetworks, hardwareMac, iface, isDhcp, isPrivateRelay, off, on, randomMac, restart, setDns, setIp, setMac, setRouter } from './network.js'
-import { intro, isCancel, password, select, spinner } from '@clack/prompts'
-import { program } from 'commander'
 
 const connectNetwork = (ssid, pass, { message, retry, withGuide = true } = {}) => new Promise((resolve) => {
   const s = spinner({ withGuide })
@@ -74,11 +74,9 @@ const selectNetwork = async (prefetched) => {
   if (!result) return
   const { networks, current } = result
   if (networks.length === 0) { print('No networks found'); return }
-  intro(name)
   const ssid = await select({
     message: 'Select a network to join',
     initialValue: current,
-    maxItems: networks.length,
     options: networks.map(n => ({ label: '\x1b[0m' + renderNetwork(n, networks), value: n.ssid })),
   })
   if (isCancel(ssid) || ssid === current) return
@@ -148,10 +146,17 @@ program
   .command('forget [network]')
   .alias('f')
   .summary('Forget a Wi-Fi network')
-  .action((network) => {
-    const ssid = network || currentNetwork()
-    if (!ssid) { print('Not connected'); return }
-    forgetNetwork(ssid)
+  .action(async (network) => {
+    if (network) return forgetNetwork(network)
+    const networks = getSavedNetworks().sort()
+    if (networks.length === 0) { print('No saved networks'); return }
+    const current = currentNetwork()
+    const ssids = await multiselect({
+      message: 'Select networks to forget',
+      options: networks.map(n => ({ label: n, value: n })),
+    })
+    if (isCancel(ssids)) return
+    for (const ssid of ssids) forgetNetwork(ssid)
   })
 
 program
@@ -257,7 +262,7 @@ program
   .alias('s')
   .summary('List saved Wi-Fi networks')
   .action(() => {
-    const networks = getSavedNetworks()
+    const networks = getSavedNetworks().sort()
     const current = currentNetwork()
     if (networks.length === 0) { print('No saved networks'); return }
     print(networks.map(ssid => ssid + (ssid === current ? ' ◀'.green : '')).join('\n'))
