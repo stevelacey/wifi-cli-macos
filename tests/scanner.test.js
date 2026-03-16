@@ -10,7 +10,7 @@ vi.mock('../support.js', () => ({
 }))
 
 import { basePath, exec, execSync, run, spawn, spawnSync } from '../support.js'
-import { connect, current, disconnect, ensure, forget, scan } from '../scanner.js'
+import { connect, current, disconnect, check, forget, scan } from '../scanner.js'
 
 const BIN = '/mock/build/wifi-scanner.app/Contents/MacOS/wifi-scanner'
 
@@ -57,12 +57,12 @@ describe('disconnect', () => {
   })
 })
 
-describe('ensure', () => {
+describe('check', () => {
   it('builds scanner when binary missing but xcode present', () => {
     run.mockImplementationOnce(() => { throw new Error('not executable') })
     run.mockReturnValue('')
     execSync.mockReturnValue(Buffer.from('granted'))
-    ensure()
+    check()
     expect(run).toHaveBeenCalledWith(expect.stringContaining('build-scanner'))
   })
 
@@ -70,7 +70,7 @@ describe('ensure', () => {
     run.mockImplementationOnce(() => { throw new Error('not executable') })
     run.mockImplementationOnce(() => { throw new Error('no xcode') })
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(ensure()).toBe(false)
+    expect(check()).toBe(false)
     spy.mockRestore()
   })
 
@@ -78,23 +78,23 @@ describe('ensure', () => {
     run.mockReturnValue('')
     execSync.mockReturnValueOnce(Buffer.from('denied')).mockImplementationOnce(() => { throw new Error('denied') })
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    expect(ensure()).toBe(false)
+    expect(check()).toBe(false)
     spy.mockRestore()
   })
 
   it('returns false when check command throws', () => {
     run.mockReturnValue('')
     execSync.mockImplementationOnce(() => { throw new Error('check failed') }).mockReturnValueOnce(Buffer.from(''))
-    expect(ensure()).toBe(true)
+    expect(check()).toBe(true)
   })
 
   it('returns true when binary is ready and permission granted', () => {
-    expect(ensure()).toBe(true)
+    expect(check()).toBe(true)
   })
 
   it('returns true when permission granted after request', () => {
     execSync.mockReturnValueOnce(Buffer.from('denied')).mockReturnValueOnce(Buffer.from(''))
-    expect(ensure()).toBe(true)
+    expect(check()).toBe(true)
   })
 })
 

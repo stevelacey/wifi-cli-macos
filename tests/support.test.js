@@ -9,7 +9,7 @@ vi.mock('child_process', () => {
 })
 
 import child_process from 'child_process'
-import { run, tryRun, waitFor, basePath, exec, execSync, spawn, spawnSync } from '../support.js'
+import { basePath, exec, execSync, randomMac, run, spawn, spawnSync, tryRun, waitFor } from '../support.js'
 
 
 describe('basePath', () => {
@@ -23,6 +23,20 @@ describe('basePath', () => {
 
   it('returns a path ending with the given segment', () => {
     expect(basePath('foo/bar')).toMatch(/foo\/bar$/)
+  })
+})
+
+describe('randomMac', () => {
+  it('returns a valid MAC address format', () => {
+    expect(randomMac()).toMatch(/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/)
+  })
+
+  it('sets locally-administered unicast bit', () => {
+    for (let i = 0; i < 20; i++) {
+      const firstByte = parseInt(randomMac().split(':')[0], 16)
+      expect(firstByte & 0x02).toBe(0x02)
+      expect(firstByte & 0x01).toBe(0x00)
+    }
   })
 })
 

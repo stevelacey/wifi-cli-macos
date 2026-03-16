@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import colors from 'colors'
 
 vi.mock('qrcode-terminal', () => ({
@@ -11,16 +11,21 @@ import qrcode from 'qrcode-terminal'
 import {
   formatHelp,
   formatLabel,
+  isTTY,
   print,
   renderBars,
   renderNetwork,
   renderQr,
+  renderText,
   subcommandTerm,
   table,
   withDefault,
+  write,
 } from '../renderers.js'
 
 const strip = colors.strip.bind(colors)
+
+Object.defineProperty(process.stdout, 'isTTY', { get: () => false, configurable: true })
 
 describe('formatHelp', () => {
   const makeCmd = ({ name, usage = '', description = '', parent = null, alias } = {}) => ({
@@ -87,12 +92,22 @@ describe('formatLabel', () => {
   })
 })
 
+describe('isTTY', () => {
+  it('returns false when not a TTY', () => {
+    expect(isTTY()).toBe(false)
+  })
+
+  it('returns true when stdout is a TTY', () => {
+    vi.spyOn(process.stdout, 'isTTY', 'get').mockReturnValue(true)
+    expect(isTTY()).toBe(true)
+  })
+})
+
 describe('print', () => {
   it('calls console.log', () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {})
-    print('hello')
-    expect(spy).toHaveBeenCalledWith('hello')
-    spy.mockRestore()
+    print('hello', 42)
+    expect(spy).toHaveBeenCalledWith('hello', 42)
   })
 })
 
@@ -115,6 +130,12 @@ describe('renderBars', () => {
       expect(strip(result.signal).replace(/\s/g, '').length).toBe(bars)
     })
   }
+
+  it('returns colored signal in TTY mode', () => {
+    vi.spyOn(process.stdout, 'isTTY', 'get').mockReturnValue(true)
+    const { signal } = renderBars(-50)
+    expect(signal).not.toBe(strip(signal))
+  })
 })
 
 describe('renderNetwork', () => {
@@ -178,6 +199,18 @@ describe('renderQr', () => {
   it('returns trimmed QR code output', () => {
     qrcode.generate.mockImplementation((uri, opts, cb) => cb('  QR_OUTPUT  '))
     expect(renderQr('Net', 'pass')).toBe('QR_OUTPUT')
+  })
+})
+
+describe('renderText', () => {
+  it('strips colors in non-TTY mode', () => {
+    expect(renderText('hello'.green)).toBe('hello')
+  })
+
+  it('passes string through in TTY mode', () => {
+    vi.spyOn(process.stdout, 'isTTY', 'get').mockReturnValue(true)
+    const colored = 'hello'.green
+    expect(renderText(colored)).toBe(colored)
   })
 })
 
@@ -261,5 +294,13 @@ describe('withDefault', () => {
 
   it('returns plain value when same as default', () => {
     expect(strip(withDefault('1.1.1.1', '1.1.1.1'))).toBe('1.1.1.1')
+  })
+})
+
+describe('write', () => {
+  it('calls process.stdout.write', () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => {})
+    write('hello')
+    expect(process.stdout.write).toHaveBeenCalledWith('hello')
   })
 })

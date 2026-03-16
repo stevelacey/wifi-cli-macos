@@ -2,7 +2,7 @@ import { basePath, exec, execSync, run, spawn, spawnSync } from './support.js'
 
 const bin = basePath('build/wifi-scanner.app/Contents/MacOS/wifi-scanner')
 
-export const ensure = () => {
+export const check = () => {
   const ready = (() => { try { run(`test -x "${bin}"`); return true } catch { return false } })()
   if (!ready) {
     try { run('xcode-select -p') } catch {

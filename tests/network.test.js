@@ -1,13 +1,21 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { vi, describe, it, expect, afterEach, beforeEach } from 'vitest'
 
 vi.mock('../support.js', () => ({
+  execSync: vi.fn(() => Buffer.from('secret-password')),
   run: vi.fn(() => 'en0'),
+  spawn: vi.fn(() => ({ stdout: { on: vi.fn() }, on: vi.fn() })),
   tryRun: vi.fn(() => ''),
   waitFor: vi.fn(async (fn) => fn()),
 }))
 
-import { run, tryRun, waitFor } from '../support.js'
+vi.mock('../system.js', () => ({
+  device: 'en0',
+  hardwareMac: 'aa:bb:cc:dd:ee:ff',
+}))
+
+import { execSync, run, spawn, tryRun, waitFor } from '../support.js'
 import {
+  findPassword,
   getDhcpDns,
   getDhcpRouter,
   getDns,
@@ -15,12 +23,11 @@ import {
   getMac,
   getRouter,
   getSavedNetworks,
-  iface,
   isDhcp,
   isPrivateRelay,
+  networkQuality,
   off,
   on,
-  randomMac,
   setDns,
   setIp,
   setMac,
@@ -32,10 +39,22 @@ beforeEach(() => {
   tryRun.mockReturnValue('')
 })
 
+describe('findPassword', () => {
+  it('returns password when found in keychain', () => {
+    expect(findPassword('MyNetwork')).toBe('secret-password')
+    expect(execSync).toHaveBeenCalledWith('security find-generic-password -ga "MyNetwork" -w 2>/dev/null')
+  })
+
+  it('returns empty string when not found', () => {
+    execSync.mockImplementationOnce(() => { throw new Error('not found') })
+    expect(findPassword('MyNetwork')).toBe('')
+  })
+})
+
 describe('getDhcpDns', () => {
-  it('calls ipconfig with iface', () => {
+  it('calls ipconfig with device', () => {
     getDhcpDns()
-    expect(tryRun).toHaveBeenCalledWith(`ipconfig getpacket ${iface}`)
+    expect(tryRun).toHaveBeenCalledWith(`ipconfig getpacket en0`)
   })
 
   it('parses DNS from ipconfig getpacket output', () => {
@@ -81,7 +100,7 @@ describe('getIp', () => {
   it('calls tryRun with ipconfig getifaddr', () => {
     tryRun.mockReturnValue('192.168.1.100')
     expect(getIp()).toBe('192.168.1.100')
-    expect(tryRun).toHaveBeenCalledWith(`ipconfig getifaddr ${iface}`)
+    expect(tryRun).toHaveBeenCalledWith(`ipconfig getifaddr en0`)
   })
 })
 
@@ -89,7 +108,7 @@ describe('getMac', () => {
   it('calls tryRun with ifconfig ether', () => {
     tryRun.mockReturnValue('aa:bb:cc:dd:ee:ff')
     expect(getMac()).toBe('aa:bb:cc:dd:ee:ff')
-    expect(tryRun).toHaveBeenCalledWith(`ifconfig ${iface} | awk '/ether/{print $2}'`)
+    expect(tryRun).toHaveBeenCalledWith(`ifconfig en0 | awk '/ether/{print $2}'`)
   })
 })
 
@@ -131,12 +150,6 @@ describe('getSavedNetworks', () => {
   })
 })
 
-describe('iface', () => {
-  it('is en0 (from mock run at import time)', () => {
-    expect(iface).toBe('en0')
-  })
-})
-
 describe('isDhcp', () => {
   it('returns false when manual IP configured', () => {
     tryRun.mockReturnValue('Manual\nIP address: 10.0.0.1')
@@ -166,33 +179,33 @@ describe('isPrivateRelay', () => {
   })
 })
 
+describe('networkQuality', () => {
+  it('spawns networkQuality with -c flag', () => {
+    networkQuality()
+    expect(spawn).toHaveBeenCalledWith('networkQuality', ['-c'])
+  })
+
+  it('returns the spawned process', () => {
+    const proc = { stdout: { on: vi.fn() }, on: vi.fn() }
+    spawn.mockReturnValueOnce(proc)
+    expect(networkQuality()).toBe(proc)
+  })
+})
+
 describe('off', () => {
   it('calls networksetup -setairportpower off', () => {
     expect(off()).toBe(true)
-    expect(run).toHaveBeenCalledWith(`networksetup -setairportpower ${iface} off`)
+    expect(run).toHaveBeenCalledWith(`networksetup -setairportpower en0 off`)
   })
 })
 
 describe('on', () => {
   it('calls networksetup -setairportpower on', () => {
     expect(on()).toBe(true)
-    expect(run).toHaveBeenCalledWith(`networksetup -setairportpower ${iface} on`)
+    expect(run).toHaveBeenCalledWith(`networksetup -setairportpower en0 on`)
   })
 })
 
-describe('randomMac', () => {
-  it('returns a valid MAC address format', () => {
-    expect(randomMac()).toMatch(/^([0-9a-f]{2}:){5}[0-9a-f]{2}$/)
-  })
-
-  it('sets locally-administered unicast bit', () => {
-    for (let i = 0; i < 20; i++) {
-      const firstByte = parseInt(randomMac().split(':')[0], 16)
-      expect(firstByte & 0x02).toBe(0x02)
-      expect(firstByte & 0x01).toBe(0x00)
-    }
-  })
-})
 
 describe('setDns', () => {
   it('calls networksetup -setdnsservers with servers joined by space', () => {
@@ -233,11 +246,11 @@ describe('setMac', () => {
   it('applies new MAC when different from current', () => {
     tryRun.mockReturnValueOnce('aa:bb:cc:dd:ee:ff').mockReturnValueOnce('11:22:33:44:55:66')
     setMac('11:22:33:44:55:66')
-    expect(run).toHaveBeenCalledWith(`sudo ifconfig ${iface} ether 11:22:33:44:55:66`)
+    expect(run).toHaveBeenCalledWith(`sudo ifconfig en0 ether 11:22:33:44:55:66`)
   })
 
   it('resolves "auto" to hardwareMac', () => {
-    tryRun.mockReturnValue('')
+    tryRun.mockReturnValue('aa:bb:cc:dd:ee:ff')
     setMac('auto')
     expect(run).not.toHaveBeenCalledWith(expect.stringContaining('ifconfig'))
   })

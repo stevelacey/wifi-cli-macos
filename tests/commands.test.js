@@ -28,7 +28,7 @@ vi.mock('../scanner.js', () => ({
   connect: vi.fn(() => ({ on: vi.fn() })),
   current: vi.fn(() => 'HomeNet'),
   disconnect: vi.fn(),
-  ensure: vi.fn(() => true),
+  check: vi.fn(() => true),
   forget: vi.fn(),
   scan: vi.fn((cb) => cb(null, JSON.stringify({
     networks: [
@@ -40,7 +40,13 @@ vi.mock('../scanner.js', () => ({
   }))),
 }))
 
+vi.mock('../system.js', () => ({
+  device: 'en0',
+  hardwareMac: 'aa:bb:cc:dd:ee:ff',
+}))
+
 vi.mock('../network.js', () => ({
+  findPassword: vi.fn(() => 'secret-password'),
   getDhcpDns: vi.fn(() => '192.168.1.1'),
   getDhcpRouter: vi.fn(() => '192.168.1.1'),
   getDns: vi.fn(() => '1.1.1.1 1.0.0.1'),
@@ -48,23 +54,20 @@ vi.mock('../network.js', () => ({
   getMac: vi.fn(() => 'aa:bb:cc:dd:ee:ff'),
   getRouter: vi.fn(() => '192.168.1.1'),
   getSavedNetworks: vi.fn(() => ['HomeNet', 'WorkNet']),
-  hardwareMac: 'aa:bb:cc:dd:ee:ff',
-  iface: 'en0',
   isDhcp: vi.fn(() => true),
   isPrivateRelay: vi.fn(() => false),
   off: vi.fn(() => true),
   on: vi.fn(() => true),
-  randomMac: vi.fn(() => '02:ab:cd:ef:01:23'),
   restart: vi.fn(),
   setDns: vi.fn(() => '8.8.8.8 8.8.4.4'),
   setIp: vi.fn(async (ip) => ip === 'auto' ? '10.0.0.5' : ip),
   setMac: vi.fn((mac) => mac === 'auto' ? 'aa:bb:cc:dd:ee:ff' : mac),
+  networkQuality: vi.fn(() => ({ stdout: { on: vi.fn() }, on: vi.fn() })),
   setRouter: vi.fn(async (r) => r),
 }))
 
 vi.mock('../support.js', () => ({
-  execSync: vi.fn(() => Buffer.from('secret-password')),
-  spawn: vi.fn(() => ({ stdout: { on: vi.fn() }, on: vi.fn() })),
+  randomMac: vi.fn(() => '02:ab:cd:ef:01:23'),
 }))
 
 vi.mock('../prompts.js', () => ({
@@ -83,7 +86,7 @@ import * as support from '../support.js'
 beforeAll(() => import('../index.js'))
 
 beforeEach(() => {
-  scanner.ensure.mockReturnValue(true)
+  scanner.check.mockReturnValue(true)
   scanner.current.mockReturnValue('HomeNet')
   scanner.scan.mockImplementation((cb) => cb(null, JSON.stringify({
     networks: [
@@ -104,12 +107,13 @@ beforeEach(() => {
   network.isPrivateRelay.mockReturnValue(false)
   network.off.mockReturnValue(true)
   network.on.mockReturnValue(true)
-  network.randomMac.mockReturnValue('02:ab:cd:ef:01:23')
+  support.randomMac.mockReturnValue('02:ab:cd:ef:01:23')
   network.setDns.mockReturnValue('8.8.8.8 8.8.4.4')
   network.setIp.mockImplementation(async (ip) => ip === 'auto' ? '10.0.0.5' : ip)
   network.setMac.mockImplementation((mac) => mac === 'auto' ? 'aa:bb:cc:dd:ee:ff' : mac)
+  network.findPassword.mockReturnValue('secret-password')
+  network.networkQuality.mockReturnValue({ stdout: { on: vi.fn() }, on: vi.fn() })
   network.setRouter.mockImplementation(async (r) => r)
-  support.execSync.mockReturnValue(Buffer.from('secret-password'))
   prompts.isCancel.mockReset()
   prompts.isCancel.mockReturnValue(false)
   prompts.multiselect.mockReset()
@@ -170,8 +174,20 @@ describe('connect', () => {
     prompts.select.mockResolvedValueOnce('WorkNet')
     prompts.password.mockResolvedValueOnce('')
     scanner.connect.mockReturnValue({ on: (e, cb) => { if (e === 'close') cb(0) } })
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => {})
     await run('connect', undefined, undefined)
     expect(scanner.connect).toHaveBeenCalledWith('WorkNet', 'secret-password')
+    expect(process.stdout.write).toHaveBeenCalled()
+  })
+
+  it('connects without writing when no keychain password found', async () => {
+    prompts.select.mockResolvedValueOnce('WorkNet')
+    prompts.password.mockResolvedValueOnce('')
+    network.findPassword.mockReturnValueOnce('')
+    scanner.connect.mockReturnValue({ on: (e, cb) => { if (e === 'close') cb(0) } })
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => {})
+    await run('connect', undefined, undefined)
+    expect(process.stdout.write).not.toHaveBeenCalled()
   })
 
   it('does nothing when scan fails with no network', async () => {
@@ -235,8 +251,8 @@ describe('disconnect', () => {
     expect(scanner.disconnect).toHaveBeenCalled()
   })
 
-  it('does nothing when ensure fails', async () => {
-    scanner.ensure.mockReturnValue(false)
+  it('does nothing when check fails', async () => {
+    scanner.check.mockReturnValue(false)
     await run('disconnect')
     expect(scanner.disconnect).not.toHaveBeenCalled()
   })
@@ -280,8 +296,8 @@ describe('forget', () => {
     expect(scanner.forget).not.toHaveBeenCalled()
   })
 
-  it('does not forget when ensure fails', async () => {
-    scanner.ensure.mockReturnValue(false)
+  it('does not forget when check fails', async () => {
+    scanner.check.mockReturnValue(false)
     await run('forget', 'HomeNet')
     expect(scanner.forget).not.toHaveBeenCalled()
   })
@@ -315,8 +331,8 @@ describe('info', () => {
     expect(output()).toContain('manual')
   })
 
-  it('shows not connected when ensure fails', async () => {
-    scanner.ensure.mockReturnValue(false)
+  it('shows not connected when check fails', async () => {
+    scanner.check.mockReturnValue(false)
     await run('info')
     expect(output()).toContain('Not connected')
   })
@@ -365,8 +381,8 @@ describe('list', () => {
     expect(output()).not.toMatch(/\x1b\[/)
   })
 
-  it('does nothing when ensure fails', async () => {
-    scanner.ensure.mockReturnValue(false)
+  it('does nothing when check fails', async () => {
+    scanner.check.mockReturnValue(false)
     await run('list')
     expect(output()).toBe('')
   })
@@ -395,6 +411,26 @@ describe('list', () => {
     scanner.scan.mockImplementation((cb) => cb(null, JSON.stringify({ networks: [], current: '', hotspots: [] })))
     await run('list')
     expect(output()).toContain('No networks found')
+  })
+
+  it('includes BLE hotspot not already in networks', async () => {
+    scanner.scan.mockImplementationOnce((cb) => cb(null, JSON.stringify({
+      networks: [{ ssid: 'HomeNet', rssi: -50, security: 'WPA2', band: '5 GHz' }],
+      current: 'HomeNet',
+      hotspots: [{ ssid: 'iPhone', rssi: -60 }],
+    })))
+    await run('list')
+    expect(output()).toContain('iPhone')
+  })
+
+  it('deduplicates BLE hotspot already in networks', async () => {
+    scanner.scan.mockImplementationOnce((cb) => cb(null, JSON.stringify({
+      networks: [{ ssid: 'iPhone', rssi: -60, security: 'WPA2', band: '5 GHz' }],
+      current: '',
+      hotspots: [{ ssid: 'iPhone', rssi: -60 }],
+    })))
+    await run('list')
+    expect(output().split('iPhone')).toHaveLength(2)
   })
 })
 
@@ -457,7 +493,7 @@ describe('qr', () => {
   })
 
   it('omits password line when no password found', async () => {
-    support.execSync.mockImplementation(() => { throw new Error('not found') })
+    network.findPassword.mockReturnValue('')
     await run('qr')
     expect(output()).not.toContain('Password:')
     expect(output()).toContain('HomeNet')
@@ -551,7 +587,7 @@ describe('test', () => {
       stdout: { on: vi.fn((e, cb) => { if (e === 'data') cb('{"dl_throughput":100000000,"ul_throughput":50000000,"base_rtt":20}') }) },
       on: vi.fn((e, cb) => { if (e === 'close') cb(0) }),
     }
-    support.spawn.mockReturnValue(proc)
+    network.networkQuality.mockReturnValue(proc)
     await run('test')
     expect(output()).toContain('Mbps')
   })
@@ -563,7 +599,7 @@ describe('test', () => {
       stdout: { on: vi.fn() },
       on: vi.fn((e, cb) => { if (e === 'close') cb(1) }),
     }
-    support.spawn.mockReturnValue(proc)
+    network.networkQuality.mockReturnValue(proc)
     await run('test')
     expect(s.stop).toHaveBeenCalledWith('Speed test failed')
   })
@@ -575,7 +611,7 @@ describe('test', () => {
       stdout: { on: vi.fn((e, cb) => { if (e === 'data') cb('not json') }) },
       on: vi.fn((e, cb) => { if (e === 'close') cb(0) }),
     }
-    support.spawn.mockReturnValue(proc)
+    network.networkQuality.mockReturnValue(proc)
     await run('test')
     expect(s.stop).toHaveBeenCalledWith('Speed test failed')
   })
@@ -585,7 +621,7 @@ describe('test', () => {
       stdout: { on: vi.fn((e, cb) => { if (e === 'data') cb('{"dl_throughput":100000000,"ul_throughput":50000000}') }) },
       on: vi.fn((e, cb) => { if (e === 'close') cb(0) }),
     }
-    support.spawn.mockReturnValue(proc)
+    network.networkQuality.mockReturnValue(proc)
     await run('test')
     expect(output()).not.toContain('ms')
   })

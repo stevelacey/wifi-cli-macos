@@ -10,6 +10,12 @@ export const exec = child_process.exec
 
 export const execSync = child_process.execSync
 
+export const randomMac = () => {
+  const bytes = Array.from({ length: 6 }, () => Math.floor(Math.random() * 256))
+  bytes[0] = (bytes[0] & 0xFE) | 0x02 // locally administered, unicast
+  return bytes.map(b => b.toString(16).padStart(2, '0')).join(':')
+}
+
 export const run = (cmd) => execSync(cmd).toString().trim()
 
 export const spawn = child_process.spawn

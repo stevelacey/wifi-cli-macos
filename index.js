@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import 'colors'
-import { connect, current, disconnect, ensure, forget, scan } from './scanner.js'
+import { check, connect, current, disconnect, forget, scan } from './scanner.js'
+import { findPassword, getDhcpDns, getDhcpRouter, getDns, getIp, getMac, getRouter, getSavedNetworks, isDhcp, isPrivateRelay, networkQuality, off, on, restart, setDns, setIp, setMac, setRouter } from './network.js'
+import { device, hardwareMac } from './system.js'
+import { randomMac } from './support.js'
 import { dnsPresets, name, version } from './settings.js'
-import { execSync, spawn } from './support.js'
-import { formatHelp, formatLabel, print, renderBars, renderNetwork, renderQr, subcommandTerm, table, withDefault } from './renderers.js'
-import { getDhcpDns, getDhcpRouter, getDns, getIp, getMac, getRouter, getSavedNetworks, hardwareMac, iface, isDhcp, isPrivateRelay, off, on, randomMac, restart, setDns, setIp, setMac, setRouter } from './network.js'
+import { formatHelp, formatLabel, print, renderBars, renderNetwork, renderQr, subcommandTerm, table, withDefault, write } from './renderers.js'
 import { isCancel, multiselect, password, select, spinner } from './prompts.js'
 import { program } from 'commander'
 
@@ -21,13 +22,11 @@ const connectNetwork = (ssid, pass, { message, retry, withGuide = true } = {}) =
   attempt()
 })
 
-const currentNetwork = () => { if (!ensure()) return ''; return current() }
+const currentNetwork = () => { if (!check()) return ''; return current() }
 
-const disconnectNetwork = () => { if (ensure()) disconnect() }
+const disconnectNetwork = () => { if (check()) disconnect() }
 
-const findPassword = (ssid) => { try { return execSync(`security find-generic-password -ga "${ssid}" -w 2>/dev/null`).toString().trim() } catch { return '' } }
-
-const forgetNetwork = (ssid) => { if (ensure()) forget(ssid) }
+const forgetNetwork = (ssid) => { if (check()) forget(ssid) }
 
 const getDnsServers = () => {
   const custom = getDns()
@@ -44,7 +43,7 @@ const getDnsServers = () => {
 }
 
 const getNetworks = () => {
-  if (!ensure()) return
+  if (!check()) return
   return new Promise((resolve) => {
     scan((err, stdout) => {
       if (err) { resolve(null); return }
@@ -53,7 +52,6 @@ const getNetworks = () => {
       const current = raw.current || currentNetwork()
       const seen = new Set(networks.map(n => n.ssid))
       for (const h of (raw.hotspots || [])) {
-        /* v8 ignore next */
         if (!seen.has(h.ssid)) networks.push({ ...h, band: 'BLE', security: 'WPA2/3', hotspot: true })
       }
       networks.sort((a, b) => b.rssi - a.rssi)
@@ -90,8 +88,7 @@ const selectNetwork = async (prefetched) => {
       pass = input
     } else {
       pass = findPassword(ssid)
-      /* v8 ignore next */
-      if (pass) process.stdout.write(`\x1b[1A\x1b[2K\r│  ${'▪'.repeat(pass.length)}\n`.grey)
+      if (pass) write(`\x1b[1A\x1b[2K\r│  ${'▪'.repeat(pass.length)}\n`.grey)
     }
   }
   if (network && network.hotspot) {
@@ -286,7 +283,7 @@ program
     const s = spinner({ withGuide: false })
     s.start('Testing network speed')
     let output = ''
-    const proc = spawn('networkQuality', ['-c'])
+    const proc = networkQuality()
     proc.stdout.on('data', d => output += d)
     proc.on('close', (code) => {
       if (code !== 0) { s.stop('Speed test failed'); resolve(); return }

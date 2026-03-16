@@ -42,7 +42,9 @@ export const formatLabel = (k) => {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-export const print = (...args) => console.log(...args.map(a => typeof a === 'string' && !process.stdout.isTTY ? colors.strip(a) : /* v8 ignore next */ a))
+export const isTTY = () => !!process.stdout.isTTY
+
+export const print = (...args) => console.log(...args.map(a => typeof a === 'string' ? renderText(a) : a))
 
 export const renderBars = (rssi) => {
   const bars = '▁▂▃▄▅▆▇'
@@ -50,8 +52,7 @@ export const renderBars = (rssi) => {
   const color = rssi > -67 ? 'green' : rssi > -70 ? 'yellow' : 'red'
   const filled = bars.slice(0, n)
   const empty = bars.slice(n)
-  /* v8 ignore next */
-  return { signal: process.stdout.isTTY ? filled[color] + empty.dim.grey : filled.padEnd(bars.length), color }
+  return { signal: isTTY() ? filled[color] + empty.dim.grey : filled.padEnd(bars.length), color }
 }
 
 export const renderNetwork = ({ ssid, rssi, security, band }, networks) => {
@@ -59,8 +60,7 @@ export const renderNetwork = ({ ssid, rssi, security, band }, networks) => {
   const { signal, color } = renderBars(rssi)
   const details = `${(band || '').padEnd(9)} ${(security || '').padEnd(6)}`
   const result = `${ssid.padEnd(max)[color]}  ${signal}  ${details.grey}`
-  /* v8 ignore next */
-  return process.stdout.isTTY ? result : colors.strip(result)
+  return renderText(result)
 }
 
 export const renderQr = (ssid, pass) => {
@@ -72,6 +72,8 @@ export const renderQr = (ssid, pass) => {
   qrcode.generate(uri, { small: true }, output => code = output.trim())
   return code
 }
+
+export const renderText = (s) => isTTY() ? s : colors.strip(s)
 
 export const subcommandTerm = (cmd) => {
   const alias = cmd.alias()
@@ -87,3 +89,5 @@ export const table = (rows) => {
 }
 
 export const withDefault = (value, def) => def && value !== def ? `${value} ${('(default: ' + def + ')').grey}` : value
+
+export const write = (s) => process.stdout.write(s)
