@@ -1,0 +1,23 @@
+{
+  "formatter": {
+    "indentStyle": "space",
+    "lineWidth": 160
+  },
+  "javascript": {
+    "formatter": {
+      "semicolons": "asNeeded"
+    }
+  },
+  "linter": {
+    "rules": {
+      "style": {
+        "useNodejsImportProtocol": "off"
+      }
+    }
+  },
+  "vcs": {
+    "clientKind": "git",
+    "enabled": true,
+    "useIgnoreFile": true
+  }
+}

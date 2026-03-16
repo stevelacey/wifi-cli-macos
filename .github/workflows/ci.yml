@@ -16,4 +16,5 @@ jobs:
           node-version: 24
 
       - run: npm ci --force
-      - run: npm test
+      - run: npm run lint
+      - run: npm run test
