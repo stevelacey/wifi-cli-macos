@@ -5,7 +5,7 @@ Wi-Fi CLI MacOS is a command line utility for managing network connections on Ma
 [![npm version](https://img.shields.io/npm/v/wifi-cli-macos?style=flat-square)](https://www.npmjs.com/package/wifi-cli-macos)
 [![CI](https://img.shields.io/github/actions/workflow/status/stevelacey/wifi-cli-macos/ci.yml?branch=main&style=flat-square)](https://github.com/stevelacey/wifi-cli-macos/actions/workflows/ci.yml?query=branch:main)
 [![Coverage](https://img.shields.io/codecov/c/github/stevelacey/wifi-cli-macos?style=flat-square)](https://codecov.io/gh/stevelacey/wifi-cli-macos)
-[![Downloads](https://img.shields.io/npm/dm/wifi-cli-macos?style=flat-square)](https://www.npmjs.com/package/wifi-cli-macos)
+[![Downloads](https://img.shields.io/npm/dt/wifi-cli-macos?style=flat-square)](https://www.npmjs.com/package/wifi-cli-macos)
 [![License: MIT](https://img.shields.io/npm/l/wifi-cli-macos?style=flat-square)](LICENSE.md)
 
 ![Screenshot](screenshot.png)
